@@ -4,7 +4,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -14,10 +14,15 @@ from app.models.operations import InventoryItem, SupportTicket, WorkOrder
 from app.modules.auth.dependencies import require_permission
 from app.modules.auth.service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
 from app.modules.customer360.service import customer_360
-from app.modules.incidents.service import build_incident_command, build_outage_events
+from app.modules.incidents.service import (
+    build_incident_command,
+    build_outage_events,
+    dispatch_resource_id,
+    incident_marker,
+)
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build007"])
+router = APIRouter(prefix="/platform", tags=["platform-build008"])
 
 
 
@@ -67,6 +72,76 @@ async def incident_command(
         .limit(500)
     ).all())
     return build_incident_command(network, alerts, tickets, workorders)
+
+
+
+@router.post("/incidents/{incident_id}/dispatch")
+async def dispatch_incident(
+    incident_id: str,
+    claims: Annotated[dict, Depends(require_permission("network.write"))],
+    session: Annotated[Session, Depends(database_session)],
+) -> dict:
+    network = await overview(1000)
+    event = next(
+        (row for row in build_outage_events(network.get("alarms", [])) if row["id"] == incident_id),
+        None,
+    )
+    if event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Active incident not found",
+        )
+
+    marker = incident_marker(incident_id)
+    ticket_id = dispatch_resource_id(incident_id, "ticket")
+    workorder_id = dispatch_resource_id(incident_id, "workorder")
+    actor = str(claims.get("email") or claims.get("sub") or "incident-command")
+    priority = "urgent" if event["customers_affected"] >= 25 else "high"
+    created: list[str] = []
+
+    ticket = session.get(SupportTicket, ticket_id)
+    if ticket is None:
+        ticket = SupportTicket(
+            id=ticket_id,
+            subject=f"Incident response: {event['site_name']}",
+            description=(
+                f"{marker} Automated Incident Command dispatch for "
+                f"{len(event['devices'])} offline device(s) affecting "
+                f"{event['customers_affected']} customer(s)."
+            ),
+            status="open",
+            priority=priority,
+            created_by=actor,
+        )
+        session.add(ticket)
+        created.append("ticket")
+
+    workorder = session.get(WorkOrder, workorder_id)
+    if workorder is None:
+        workorder = WorkOrder(
+            id=workorder_id,
+            title=f"Restore service at {event['site_name']}",
+            description=(
+                f"{marker} Validate power and backhaul, run diagnostics, "
+                "and restore the affected network devices."
+            ),
+            status="open",
+            priority=priority,
+            service_address=event["site_name"],
+            created_by=actor,
+        )
+        session.add(workorder)
+        created.append("workorder")
+
+    session.commit()
+    return {
+        "incident_id": incident_id,
+        "ticket_id": ticket.id,
+        "workorder_id": workorder.id,
+        "created": created,
+        "reused": [name for name in ("ticket", "workorder") if name not in created],
+        "idempotent": not created,
+    }
 
 
 @router.get("/network-intelligence")
@@ -207,12 +282,13 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build007",
+        "release": "2.0.0-rc1-build008",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
             "outage_intelligence": True,
             "incident_command": True,
+            "incident_dispatch": "idempotent",
             "customer_workspace": True,
             "tauc_controls": "configuration-gated",
             "crm_workflows": True,
