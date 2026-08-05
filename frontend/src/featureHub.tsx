@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { request as load } from "./api";
+import { AccessControl } from "./accessControl";
 
 type Mode = "parity" | "incidents" | "outages" | "network" | "field" | "reports" | "portal" | "admin" | "wifi";
 type Json = Record<string, any>;
@@ -158,7 +159,15 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
       <div className="feature-grid"><article><h3>Tickets by status</h3><pre>{JSON.stringify(data.tickets_by_status, null, 2)}</pre></article><article><h3>Work orders by status</h3><pre>{JSON.stringify(data.workorders_by_status, null, 2)}</pre></article></div>
     </>}
     {data && mode === "portal" && <article className="feature-detail"><h3>{data.enabled ? "Enabled" : "Secure activation required"}</h3><p>Customer-facing access remains disabled until identity verification and recovery controls are configured.</p><ul>{(data.requirements || []).map((x: string) => <li key={x}>{x}</li>)}</ul></article>}
-    {data && mode === "admin" && <><div className="feature-metrics"><Value label="Release" value={data.release} /><Value label="Roles" value={Object.keys(data.roles || {}).length} /><Value label="Permissions" value={Object.keys(data.permissions || {}).length} /><Value label="Administrators" value={data.access?.users?.length ?? 0} /></div><div className="feature-grid">{Object.entries(data.features || {}).map(([name, state]) => <article key={name}><h3>{name.replaceAll("_", " ")}</h3><strong>{String(state)}</strong></article>)}</div></>}
+    {data && mode === "admin" && <>
+      <div className="feature-metrics">
+        <Value label="Release" value={data.release} />
+        <Value label="Roles" value={Object.keys(data.roles || {}).length} />
+        <Value label="Permissions" value={Object.keys(data.permissions || {}).length} />
+        <Value label="Administrators" value={data.access?.users?.length ?? 0} />
+      </div>
+      <AccessControl token={token} access={data.access} onChanged={refresh} />
+    </>}
     {data && mode === "wifi" && <div className="feature-grid"><article><h3>TAUC</h3><strong>{data.tauc?.configured ? "Configured" : "Configuration required"}</strong><p>SSID, password, reboot, and diagnostics controls remain permission and endpoint gated.</p></article><article><h3>Customer gateway workflow</h3><p>Open Customer 360 to resolve a gateway and view managed Wi-Fi identity.</p></article></div>}
   </section>;
 }
