@@ -72,7 +72,7 @@ def normalize_mac(value: Any) -> str:
     return ":".join(compact[index:index + 2] for index in range(0, 12, 2))
 
 
-def merge_connected_clients(
+def merge_network_neighbors(
     leases: list[dict[str, Any]],
     arp_entries: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -300,11 +300,13 @@ class MikroTikClient:
         interfaces = data["interfaces"]
         leases = data["dhcp_leases"]
         arp_entries = data["arp"]
-        connected_clients = merge_connected_clients(leases, arp_entries)
+        network_neighbors = merge_network_neighbors(leases, arp_entries)
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "status": "ready" if not warnings else "partial",
             "mode": "read-only",
+            "scope": "internal-network-operations",
+            "customer_assignment_supported": False,
             "identity": data["identity"],
             "resource": resource,
             "summary": {
@@ -325,7 +327,7 @@ class MikroTikClient:
                     str(row.get("status", "")).lower() == "bound"
                     for row in leases
                 ),
-                "connected_clients": len(connected_clients),
+                "observed_hosts": len(network_neighbors),
                 "routes": len(data["routes"]),
             },
             "interfaces": interfaces,
@@ -333,6 +335,6 @@ class MikroTikClient:
             "routes": data["routes"],
             "dhcp_leases": leases,
             "arp": arp_entries,
-            "connected_clients": connected_clients,
+            "network_neighbors": network_neighbors,
             "warnings": warnings,
         }
