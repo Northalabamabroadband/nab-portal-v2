@@ -36,7 +36,7 @@ class UISPClient:
             self.token = settings.uisp_crm_api_token or settings.uisp_api_token
         self.verify_tls = settings.uisp_verify_tls
         self.timeout = settings.uisp_timeout_seconds
-        self.auth_mode = settings.uisp_auth_mode.strip().lower() or "app-key"
+        service_auth_mode = (\n            settings.uisp_nms_auth_mode\n            if service == "nms"\n            else settings.uisp_crm_auth_mode\n        )\n        self.auth_mode = (service_auth_mode or settings.uisp_auth_mode).strip().lower() or "app-key"
 
     def configured(self) -> bool: return bool(self.base_url and self.token)
     def headers(self) -> dict[str,str]:
