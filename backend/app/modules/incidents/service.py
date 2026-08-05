@@ -4,6 +4,7 @@ import re
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 
 def build_outage_events(alarms: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -106,6 +107,11 @@ def build_incident_command(
 def incident_marker(incident_id: str) -> str:
     normalized = _slug(incident_id)
     return f"[incident:{normalized}]"
+
+
+def dispatch_resource_id(incident_id: str, resource_type: str) -> str:
+    marker = incident_marker(incident_id)
+    return str(uuid5(NAMESPACE_URL, f"nab-portal:{marker}:{resource_type}"))
 
 
 def _recommendation(customers_affected: int, devices_offline: int) -> str:
