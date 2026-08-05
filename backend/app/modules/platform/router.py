@@ -9,13 +9,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import database_session
+from app.models.observability import OperationalAlert
 from app.models.operations import InventoryItem, SupportTicket, WorkOrder
 from app.modules.auth.dependencies import require_permission
 from app.modules.auth.service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
 from app.modules.customer360.service import customer_360
+from app.modules.incidents.service import build_incident_command, build_outage_events
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build005"])
+router = APIRouter(prefix="/platform", tags=["platform-build007"])
 
 
 
@@ -29,25 +31,7 @@ async def outage_intelligence(
         alarm for alarm in network["alarms"]
         if alarm["type"] == "device_offline"
     ]
-    sites: dict[str, dict] = {}
-    for alarm in offline:
-        site = sites.setdefault(alarm["site_name"], {
-            "site_name": alarm["site_name"],
-            "devices": [],
-            "customers_affected": 0,
-            "severity": "critical",
-        })
-        site["devices"].append({
-            "id": alarm["device_id"],
-            "name": alarm["device_name"],
-        })
-        site["customers_affected"] += alarm["customers_affected"]
-
-    events = sorted(
-        sites.values(),
-        key=lambda row: row["customers_affected"],
-        reverse=True,
-    )
+    events = build_outage_events(offline)
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "active_outages": len(events),
@@ -55,6 +39,34 @@ async def outage_intelligence(
         "customers_affected": sum(x["customers_affected"] for x in events),
         "events": events,
     }
+
+
+
+@router.get("/incidents/command")
+async def incident_command(
+    claims: Annotated[dict, Depends(require_permission("network.read"))],
+    session: Annotated[Session, Depends(database_session)],
+) -> dict:
+    network = await overview(1000)
+    alerts = list(session.scalars(
+        select(OperationalAlert)
+        .where(OperationalAlert.acknowledged.is_(False))
+        .order_by(OperationalAlert.created_at.desc())
+        .limit(500)
+    ).all())
+    tickets = list(session.scalars(
+        select(SupportTicket)
+        .where(SupportTicket.status.not_in(["resolved", "closed"]))
+        .order_by(SupportTicket.created_at.desc())
+        .limit(500)
+    ).all())
+    workorders = list(session.scalars(
+        select(WorkOrder)
+        .where(WorkOrder.status.not_in(["completed", "cancelled"]))
+        .order_by(WorkOrder.created_at.desc())
+        .limit(500)
+    ).all())
+    return build_incident_command(network, alerts, tickets, workorders)
 
 
 @router.get("/network-intelligence")
@@ -195,11 +207,12 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build005",
+        "release": "2.0.0-rc1-build007",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
             "outage_intelligence": True,
+            "incident_command": True,
             "customer_workspace": True,
             "tauc_controls": "configuration-gated",
             "crm_workflows": True,
