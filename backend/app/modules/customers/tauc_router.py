@@ -46,10 +46,11 @@ async def resolve_customer_gateway(
 
     tauc = TAUCClient()
     try:
-        device = await tauc.device_lookup(
+        network = await tauc.network_lookup(
             serial_number=payload.serial_number,
             mac_address=payload.mac_address,
         )
+        device = network["device"]
     except TAUCError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -98,10 +99,16 @@ async def resolve_customer_gateway(
         device.get("deviceModel") or device.get("model") or ""
     ) or None
     assignment.network_id = str(
-        device.get("networkId") or device.get("networkID") or ""
+        network.get("networkId")
+        or device.get("networkId")
+        or device.get("networkID")
+        or ""
     ) or None
     assignment.network_name = str(
-        device.get("networkName") or device.get("network") or ""
+        network.get("networkName")
+        or device.get("networkName")
+        or device.get("network")
+        or ""
     ) or None
     assignment.firmware_version = str(
         device.get("fwVersion") or device.get("firmwareVersion") or ""
