@@ -68,6 +68,18 @@ type TaucAssignment = {
   created_at: string;
 };
 
+type TaucGatewaySnapshot = {
+  device_id: string;
+  status: "ready" | "partial";
+  device: Record<string, unknown>;
+  wifi: Record<string, unknown>;
+  wifi_networks: Record<string, unknown>[];
+  connected_devices: Record<string, unknown>[];
+  connected_devices_source: string;
+  connected_devices_endpoint_configured: boolean;
+  warnings: string[];
+};
+
 type Customer360 = {
   client_id: string;
   name: string;
@@ -271,6 +283,14 @@ function CustomerView({
   const [noteBody, setNoteBody] = useState("");
   const [taucSerial, setTaucSerial] = useState("");
   const [taucMac, setTaucMac] = useState("");
+  const [taucSnapshot, setTaucSnapshot] = useState<TaucGatewaySnapshot | null>(null);
+  const [taucSnapshotError, setTaucSnapshotError] = useState("");
+  const [taucSnapshotBusy, setTaucSnapshotBusy] = useState(false);
+  const [taucRefreshKey, setTaucRefreshKey] = useState(0);
+  const gatewayDevice = data?.gateway?.device;
+  const gatewayDeviceId = String(
+    gatewayDevice?.deviceId || gatewayDevice?.id || gatewayDevice?.device_id || ""
+  );
 
   useEffect(() => {
     setData(null);
@@ -282,6 +302,36 @@ function CustomerView({
         setError(caught instanceof Error ? caught.message : "Unable to load customer")
       );
   }, [clientId, token]);
+
+  useEffect(() => {
+    if (!gatewayDeviceId) {
+      setTaucSnapshot(null);
+      setTaucSnapshotError("");
+      return;
+    }
+    let active = true;
+    setTaucSnapshotBusy(true);
+    setTaucSnapshotError("");
+    apiRequest<TaucGatewaySnapshot>(
+      `/tauc/devices/${encodeURIComponent(gatewayDeviceId)}/snapshot`,
+      {},
+      token
+    )
+      .then(snapshot => {
+        if (active) setTaucSnapshot(snapshot);
+      })
+      .catch(caught => {
+        if (active) {
+          setTaucSnapshotError(
+            caught instanceof Error ? caught.message : "Unable to load live TAUC data"
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setTaucSnapshotBusy(false);
+      });
+    return () => { active = false; };
+  }, [gatewayDeviceId, token, taucRefreshKey]);
 
 
   const runAction = async (label: string, path: string, body: Record<string, unknown> = {}) => {
@@ -401,7 +451,7 @@ function CustomerView({
 
   const device = data.gateway?.device || {};
   const network = data.gateway?.network || {};
-  const deviceId = String(device.deviceId || device.id || device.device_id || "");
+  const deviceId = gatewayDeviceId;
 
   return (
     <section className="customer360-shell">
@@ -468,7 +518,7 @@ function CustomerView({
           </form>
           <div className="gateway-actions">
             <h4>Gateway maintenance</h4>
-            <button disabled={Boolean(actionBusy) || !deviceId} onClick={() => runAction("Gateway diagnostics", "/tauc/controls/diagnostics", { device_id: deviceId })}>Run diagnostics</button>
+            <button disabled={Boolean(actionBusy) || !deviceId || taucSnapshotBusy} onClick={() => setTaucRefreshKey(value => value + 1)}>{taucSnapshotBusy ? "Reading TAUC…" : "Refresh diagnostics"}</button>
             <button className="danger-action" disabled={Boolean(actionBusy) || !deviceId} onClick={() => { if (window.confirm("Reboot this customer gateway now?")) runAction("Gateway reboot", "/tauc/controls/reboot", { device_id: deviceId }); }}>Reboot gateway</button>
           </div>
         </div>
@@ -568,11 +618,66 @@ function CustomerView({
               <div><span>Serial</span><strong>{String(device.sn || "Unavailable")}</strong></div>
               <div><span>MAC</span><strong>{String(device.mac || "Unavailable")}</strong></div>
               <div><span>Firmware</span><strong>{String(device.fwVersion || "Unavailable")}</strong></div>
-              <div><span>Network</span><strong>{String(network.networkName || network.id || "Unavailable")}</strong></div>
+              <div><span>Network</span><strong>{String(network.networkName || network.networkId || network.id || "Unavailable")}</strong></div>
             </div>
           ) : (
             <p className="muted">{data.gateway_error || "No TAUC gateway resolved."}</p>
           )}
+          <section className="tauc-live-snapshot">
+            <header>
+              <div>
+                <p className="eyebrow">LIVE TAUC DATA</p>
+                <h4>Wi-Fi and connected devices</h4>
+              </div>
+              <button
+                type="button"
+                disabled={!deviceId || taucSnapshotBusy}
+                onClick={() => setTaucRefreshKey(value => value + 1)}
+              >
+                {taucSnapshotBusy ? "Reading…" : "Refresh"}
+              </button>
+            </header>
+            {taucSnapshotError && <div className="error-message">{taucSnapshotError}</div>}
+            {taucSnapshot?.warnings.map(warning => (
+              <p className="tauc-warning" key={warning}>{warning}</p>
+            ))}
+            {taucSnapshot && (
+              <>
+                <div className="tauc-live-metrics">
+                  <div><span>Snapshot</span><strong>{taucSnapshot.status}</strong></div>
+                  <div><span>Wi-Fi networks</span><strong>{taucSnapshot.wifi_networks.length}</strong></div>
+                  <div><span>Connected devices</span><strong>{taucSnapshot.connected_devices.length}</strong></div>
+                </div>
+                <div className="tauc-live-grid">
+                  <div>
+                    <h5>Wi-Fi networks</h5>
+                    {taucSnapshot.wifi_networks.map((row, index) => (
+                      <article key={String(row.id || row.ssid || index)}>
+                        <strong>{String(row.ssid || row.ssidName || row.name || row.wifiName || "Wi-Fi network")}</strong>
+                        <span>{String(row.band || row.frequency || row.radio || "Band unavailable")}</span>
+                        <small>{String(row.enabled ?? row.status ?? "Available")}</small>
+                      </article>
+                    ))}
+                    {!taucSnapshot.wifi_networks.length && <p className="muted">No Wi-Fi networks were returned by TAUC.</p>}
+                  </div>
+                  <div>
+                    <h5>Connected devices</h5>
+                    {taucSnapshot.connected_devices.map((row, index) => (
+                      <article key={String(row.id || row.mac || row.macAddress || index)}>
+                        <strong>{String(row.name || row.hostName || row.hostname || row.alias || row.mac || "Connected device")}</strong>
+                        <span>{String(row.ip || row.ipAddress || row.macAddress || row.mac || "Address unavailable")}</span>
+                        <small>{String(row.signal || row.rssi || row.status || "Connected")}</small>
+                      </article>
+                    ))}
+                    {!taucSnapshot.connected_devices.length && <p className="muted">No connected devices were returned by TAUC.</p>}
+                  </div>
+                </div>
+              </>
+            )}
+            {!taucSnapshot && !taucSnapshotBusy && !taucSnapshotError && (
+              <p className="muted">Assign a TAUC gateway to load live Wi-Fi data.</p>
+            )}
+          </section>
         </article>
 
         <article className="panel">
