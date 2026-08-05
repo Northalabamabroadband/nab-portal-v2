@@ -75,6 +75,31 @@ class TAUCClient:
         device=await self.device_lookup(serial_number=serial_number,mac_address=mac_address); return {"networkId":str(device.get("networkId") or device.get("networkID") or ""),"deviceId":device.get("deviceId"),"device":device}
     async def wifi_ssid(self,device_id:str)->Any: return await self.request("GET",f"/v1/openapi/device-management/aginet/wifi-ssid/{device_id}",params={"refresh":"true"})
     async def wifi_password(self,device_id:str)->Any: return await self.request("GET",f"/v1/openapi/device-management/aginet/wifi-password/{device_id}",params={"refresh":"true"},extra_headers={"Required-Network-Control-Access":"false","Disposable-Network-Control-Access":"true"})
+    def _control_path(self, template: str, device_id: str) -> str:
+        if not template:
+            raise TAUCError("TAUC control endpoint is not configured")
+        return (
+            template.replace("{device_id}", device_id)
+            if "{device_id}" in template
+            else f"{template.rstrip('/')}/{device_id}"
+        )
+
+    async def set_wifi_ssid(self, device_id: str, value: str) -> Any:
+        path = self._control_path(settings.tauc_wifi_ssid_update_path, device_id)
+        return await self.request("PUT", path, json_data={"ssid": value})
+
+    async def set_wifi_password(self, device_id: str, value: str) -> Any:
+        path = self._control_path(settings.tauc_wifi_password_update_path, device_id)
+        return await self.request("PUT", path, json_data={"password": value})
+
+    async def reboot(self, device_id: str) -> Any:
+        path = self._control_path(settings.tauc_reboot_path, device_id)
+        return await self.request("POST", path)
+
+    async def diagnostics(self, device_id: str) -> Any:
+        path = self._control_path(settings.tauc_diagnostics_path, device_id)
+        return await self.request("GET", path)
+
     async def connection_status(self)->dict[str,Any]:
         status={"configured":self.configured(),"connected":None,"base_url":self.base_url,"authentication_mode":"mtls-aksk-x-authorization","certificate_present":self.client_cert.is_file(),"private_key_present":self.client_key.is_file(),"access_key_configured":bool(self.access_key),"secret_key_configured":bool(self.secret_key)}
         if self.configured() and settings.tauc_test_serial_number and settings.tauc_test_mac_address:
