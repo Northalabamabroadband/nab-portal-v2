@@ -7,20 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.dependencies import database_session
 from app.models.observability import OperationalAlert
 from app.modules.alerts.schemas import AlertCreate, AlertRead
 from app.modules.auth.dependencies import require_permission
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
-
-def database_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @router.get("", response_model=list[AlertRead])
