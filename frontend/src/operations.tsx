@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { request } from "./api";
 
 type Ticket = {
   id: string;
@@ -29,22 +30,6 @@ type InventoryItem = {
   location?: string;
 };
 
-async function request<T>(path: string, token: string): Promise<T> {
-  const response = await fetch(`/api/v2${path}`, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`
-    },
-    credentials: "include"
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || `Request failed: ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
-}
 
 export function OperationsWorkspace({ token }: { token: string }) {
   const [tab, setTab] = useState<"tickets" | "workorders" | "inventory">("tickets");
