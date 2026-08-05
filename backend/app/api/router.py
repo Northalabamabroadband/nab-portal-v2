@@ -13,6 +13,7 @@ from app.modules.fibermap.router import router as fibermap_router
 from app.modules.integrations.router import router as integrations_router
 from app.modules.inventory.router import router as inventory_router
 from app.modules.live.router import router as live_router
+from app.modules.mikrotik.router import router as mikrotik_router
 from app.modules.networkcenter.router import router as networkcenter_router
 from app.modules.noc.router import router as noc_router
 from app.modules.operations.router import router as operations_router
@@ -24,5 +25,5 @@ from app.modules.uisp.router import router as uisp_router
 from app.modules.workorders.router import router as workorders_router
 
 router = APIRouter(prefix="/api/v2")
-for child in (auth_router, admin_router, customers_router, customer_tauc_router, customer360_router, search_router, live_router, noc_router, uisp_router, tauc_router, tickets_router, workorders_router, inventory_router, operations_router, billingcenter_router, networkcenter_router, fiber_router, fibermap_router, integrations_router, platform_router, alerts_router, audit_router):
+for child in (auth_router, admin_router, customers_router, customer_tauc_router, customer360_router, search_router, live_router, noc_router, uisp_router, tauc_router, tickets_router, workorders_router, inventory_router, operations_router, billingcenter_router, networkcenter_router, fiber_router, fibermap_router, integrations_router, mikrotik_router, platform_router, alerts_router, audit_router):
     router.include_router(child)
