@@ -98,6 +98,7 @@ async def dispatch_incident(
     actor = str(claims.get("email") or claims.get("sub") or "incident-command")
     priority = "urgent" if event["customers_affected"] >= 25 else "high"
     created: list[str] = []
+    reopened: list[str] = []
 
     ticket = session.get(SupportTicket, ticket_id)
     if ticket is None:
@@ -115,6 +116,10 @@ async def dispatch_incident(
         )
         session.add(ticket)
         created.append("ticket")
+    elif ticket.status in {"resolved", "closed"}:
+        ticket.status = "open"
+        ticket.priority = priority
+        reopened.append("ticket")
 
     workorder = session.get(WorkOrder, workorder_id)
     if workorder is None:
@@ -132,6 +137,10 @@ async def dispatch_incident(
         )
         session.add(workorder)
         created.append("workorder")
+    elif workorder.status in {"completed", "cancelled"}:
+        workorder.status = "open"
+        workorder.priority = priority
+        reopened.append("workorder")
 
     session.commit()
     return {
@@ -139,8 +148,12 @@ async def dispatch_incident(
         "ticket_id": ticket.id,
         "workorder_id": workorder.id,
         "created": created,
-        "reused": [name for name in ("ticket", "workorder") if name not in created],
-        "idempotent": not created,
+        "reopened": reopened,
+        "reused": [
+            name for name in ("ticket", "workorder")
+            if name not in created and name not in reopened
+        ],
+        "idempotent": not created and not reopened,
     }
 
 
