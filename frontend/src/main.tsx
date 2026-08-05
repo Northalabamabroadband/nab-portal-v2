@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { FeatureHub } from "./featureHub";
+import "./styles.build005.css";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { IntegrationHealth } from "./integrations";
@@ -447,6 +449,7 @@ function Dashboard({
             ["◉", "Customers"],
             ["⌁", "Managed WiFi"],
             ["⌘", "Network"],
+            ["⌬", "Network Intelligence"],
             ["⌇", "Fiber"],
             ["⌖", "Fiber Map"],
             ["!", "Outages"],
@@ -457,6 +460,7 @@ function Dashboard({
             ["↗", "Analytics"],
             ["✓", "Audit"],
             ["⇄", "Integrations"],
+            ["◎", "Customer Portal"],
             ["⚙", "Settings"]
           ].map(([icon, label]) => (
             <button
@@ -523,14 +527,28 @@ function Dashboard({
           <IntegrationHealth token={token} />
         ) : activePage === "Network" ? (
           <NetworkOperationsCenter token={token} />
+        ) : activePage === "Network Intelligence" ? (
+          <FeatureHub token={token} mode="network" />
         ) : activePage === "Billing" ? (
           <BillingCenter token={token} />
         ) : activePage === "Alerts" ? (
           <AlertCenter token={token} />
         ) : activePage === "Audit" ? (
           <AuditCenter token={token} />
-        ) : activePage === "Field Operations" || activePage === "Inventory" ? (
+        ) : activePage === "Field Operations" ? (
+          <FeatureHub token={token} mode="field" />
+        ) : activePage === "Inventory" ? (
           <OperationsWorkspace token={token} />
+        ) : activePage === "Outages" ? (
+          <FeatureHub token={token} mode="outages" />
+        ) : activePage === "Analytics" ? (
+          <FeatureHub token={token} mode="reports" />
+        ) : activePage === "Managed WiFi" ? (
+          <FeatureHub token={token} mode="wifi" />
+        ) : activePage === "Customer Portal" ? (
+          <FeatureHub token={token} mode="portal" />
+        ) : activePage === "Settings" ? (
+          <FeatureHub token={token} mode="admin" />
         ) : activePage !== "Command Post" && activePage !== "Customers" ? (
           <section className="panel">
             <div className="panel-heading">
