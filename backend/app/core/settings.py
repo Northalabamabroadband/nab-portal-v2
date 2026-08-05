@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     tauc_network_clients_path: str = ""
     tauc_device_lookup_path: str = "/v1/openapi/device-information/device-id"
     tauc_network_lookup_path: str = "/v1/openapi/device-information/device-info"
+    tauc_wifi_ssid_update_path: str = ""
+    tauc_wifi_password_update_path: str = ""
+    tauc_reboot_path: str = ""
+    tauc_diagnostics_path: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore", populate_by_name=True)
 
