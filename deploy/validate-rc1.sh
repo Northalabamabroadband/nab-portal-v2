@@ -5,12 +5,14 @@ cd "$ROOT"
 python3 -m compileall backend/app
 python3 - <<'PY'
 from pathlib import Path
-required=[Path('frontend/src/main.tsx'),Path('frontend/src/fiberMap.tsx'),Path('backend/app/modules/uisp/client.py'),Path('backend/app/modules/tauc/client.py'),Path('compose.rc1.yml')]
+required=[Path('frontend/src/main.tsx'),Path('frontend/src/fiberMap.tsx'),Path('backend/app/modules/uisp/client.py'),Path('backend/app/modules/tauc/client.py'),Path('compose.rc1.yml'),Path('.gitignore')]
 for p in required:
     if not p.exists(): raise SystemExit(f'Missing {p}')
 text=Path('frontend/src/fiberMap.tsx').read_text()
 assert 'coordinates as [number, number]' in text
+ignore=Path('.gitignore').read_text()
+assert 'secrets/' in ignore and '*.key' in ignore
 print('Static RC1 checks passed.')
 PY
 if command -v docker >/dev/null 2>&1; then docker compose -f compose.rc1.yml config >/dev/null; fi
-echo "RC1 Build 001 validation passed."
+echo "RC1 Build 004 validation passed."
