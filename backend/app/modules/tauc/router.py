@@ -44,6 +44,24 @@ async def device_lookup(
     return {"device": result}
 
 
+@router.get("/devices/{device_id}/snapshot")
+async def device_snapshot(
+    device_id: str,
+    claims: Annotated[
+        dict,
+        Depends(require_permission("wifi.read")),
+    ],
+) -> dict:
+    client = TAUCClient()
+    try:
+        return await client.gateway_snapshot(device_id)
+    except TAUCError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+
 @router.post("/networks/lookup")
 async def network_lookup(
     payload: DeviceLookupRequest,
