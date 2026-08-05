@@ -4,22 +4,22 @@
 .customer-action-center{padding:1rem;border:1px solid rgba(56,189,248,.16);border-radius:16px;background:linear-gradient(145deg,rgba(10,27,44,.94),rgba(5,18,31,.94))}.customer-action-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.7rem}.customer-action-grid form,.gateway-actions{display:grid;align-content:start;gap:.55rem;padding:.85rem;border:1px solid rgba(125,211,252,.11);border-radius:12px;background:rgba(2,12,23,.62)}.customer-action-grid h4{margin:0;color:#dff5ff}.customer-action-grid input{width:100%;min-width:0;padding:.65rem;border-radius:8px}.customer-action-grid button{min-height:39px;border:1px solid rgba(56,189,248,.24);border-radius:8px;background:rgba(14,134,199,.14);color:#dff5ff;font-weight:800}.customer-action-grid button:disabled{opacity:.5}.customer-action-grid .danger-action{border-color:rgba(239,68,68,.3);background:rgba(127,29,29,.25);color:#fecaca}@media(max-width:1200px){.customer-action-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:750px){.customer-action-grid{grid-template-columns:1fr}}
 
 
-/* RC1 Build 013 — global layout and responsive stabilization */
-:root{color-scheme:dark;--control-height:42px;--content-gap:1rem}
+/* RC1 Build 014 — fluid, container-aware responsive system */
+:root{color-scheme:dark;--control-height:clamp(40px,4vw,46px);--content-gap:clamp(.7rem,1.35vw,1.15rem);--page-pad:clamp(.65rem,1.8vw,1.5rem);--card-pad:clamp(.8rem,1.45vw,1.15rem);--sidebar-width:clamp(254px,20vw,286px);--body-size:clamp(.875rem,.82rem + .18vw,1rem);--title-size:clamp(1.25rem,1rem + 1.15vw,2.2rem)}
 html{overflow-x:hidden;scroll-behavior:smooth}
-body{width:100%;overflow-x:hidden;line-height:1.5}
+body{width:100%;overflow-x:hidden;line-height:1.5;font-size:var(--body-size)}
 img,svg,canvas,video{max-width:100%}
 button,input,select,textarea{max-width:100%}
 button{touch-action:manipulation}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
 button:not(:disabled){transition:border-color .16s ease,background-color .16s ease,transform .16s ease,box-shadow .16s ease}
 button:not(:disabled):active{transform:translateY(0)}
-.workspace,.feature-hub,.integration-center,.alert-center,.audit-center,.billing-center,.noc-center,.fiber-center,.fiber-map-center,.operations-shell,.customer360-shell{min-width:0;width:100%}
+.app-shell .sidebar{width:var(--sidebar-width)!important}.app-shell .workspace{margin-left:var(--sidebar-width)!important;padding:clamp(.85rem,1.5vw,1.35rem) var(--page-pad) clamp(1.5rem,3vw,2.5rem)!important}.workspace,.feature-hub,.integration-center,.alert-center,.audit-center,.billing-center,.noc-center,.fiber-center,.fiber-map-center,.operations-shell,.customer360-shell{container-type:inline-size;min-width:0;width:100%}
 .workspace>*,.dashboard-grid>*,.feature-grid>*,.access-grid>*,.operations-grid>*,.integration-grid>*,.fiber-map-layout>*{min-width:0}
-:where(.hero-panel,.customer360-hero,.feature-hub>header,.integration-header,.alert-center-header,.audit-header,.billing-header,.noc-header,.fiber-header,.fiber-map-header,.operations-header){width:100%;min-width:0;isolation:isolate}
+:where(.hero-panel,.customer360-hero,.feature-hub>header,.integration-header,.alert-center-header,.audit-header,.billing-header,.noc-header,.fiber-header,.fiber-map-header,.operations-header){width:100%;min-width:0;padding:var(--card-pad);isolation:isolate}
 :where(.hero-panel,.customer360-hero,.feature-hub>header,.integration-header,.alert-center-header,.audit-header,.billing-header,.noc-header,.fiber-header,.fiber-map-header,.operations-header)>div:first-child{min-width:0}
-:where(.hero-panel,.customer360-hero,.feature-hub>header,.integration-header,.alert-center-header,.audit-header,.billing-header,.noc-header,.fiber-header,.fiber-map-header,.operations-header) h2{overflow-wrap:anywhere}
-:where(.metrics,.feature-metrics,.alert-metrics,.billing-metrics,.noc-metrics,.fiber-metrics,.fiber-map-metrics){width:100%}
+:where(.hero-panel,.customer360-hero,.feature-hub>header,.integration-header,.alert-center-header,.audit-header,.billing-header,.noc-header,.fiber-header,.fiber-map-header,.operations-header) h2{font-size:var(--title-size);line-height:1.14;overflow-wrap:anywhere}
+:where(.metrics,.feature-metrics,.alert-metrics,.billing-metrics,.noc-metrics,.fiber-metrics,.fiber-map-metrics){width:100%;grid-template-columns:repeat(auto-fit,minmax(min(100%,clamp(150px,17vw,220px)),1fr));gap:var(--content-gap)}
 :where(.metrics,.feature-metrics,.alert-metrics,.billing-metrics,.noc-metrics,.fiber-metrics,.fiber-map-metrics)>article{min-width:0;overflow:hidden}
 :where(.metrics,.feature-metrics,.alert-metrics,.billing-metrics,.noc-metrics,.fiber-metrics,.fiber-map-metrics) strong{overflow-wrap:anywhere}
 :where(.billing-controls,.noc-controls,.fiber-controls,.alert-filters,.audit-filters,.operations-form)>*{min-width:0}
@@ -29,12 +29,12 @@ button:not(:disabled):active{transform:translateY(0)}
 :where(.billing-table,.noc-table,.audit-table,.fiber-table){font-variant-numeric:tabular-nums}
 :where(.billing-table,.noc-table,.audit-table,.fiber-table) th{white-space:nowrap}
 :where(.billing-table,.noc-table,.audit-table,.fiber-table) td{max-width:340px;overflow-wrap:anywhere}
-:where(.feature-grid,.operations-grid,.integration-grid,.access-grid) article{min-width:0;overflow-wrap:anywhere}
+:where(.feature-grid,.operations-grid,.integration-grid,.access-grid){grid-template-columns:repeat(auto-fit,minmax(min(100%,clamp(240px,27vw,360px)),1fr));gap:var(--content-gap)}:where(.feature-grid,.operations-grid,.integration-grid,.access-grid) article{min-width:0;padding:var(--card-pad);overflow-wrap:anywhere}
 .feature-grid pre,.integration-config pre{max-width:100%;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 .access-options,.permission-options{scrollbar-gutter:stable}
 .access-options label,.permission-options label{min-width:0}
 .access-options span,.permission-options span{overflow-wrap:anywhere}
-.customer-action-grid>*{min-width:0}
+.customer-action-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:var(--content-gap)}.customer-action-grid>*{min-width:0}
 .customer-action-grid textarea{resize:vertical}
 .fiber-map-canvas{max-width:100%}
 .error-message,.dispatch-message,.feature-recovery{width:100%;overflow-wrap:anywhere}
@@ -57,7 +57,7 @@ button:not(:disabled):active{transform:translateY(0)}
   .fiber-map-layout{grid-template-columns:1fr}
 }
 @media(max-width:800px){
-  .workspace{width:100%;padding:.75rem!important}
+  .app-shell .workspace{width:100%;margin-left:0!important;padding:.75rem!important}
   .topbar{min-height:58px;gap:.55rem}
   .topbar>div:first-child{min-width:0}
   .topbar h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -91,6 +91,17 @@ button:not(:disabled):active{transform:translateY(0)}
   .feature-hub button{width:100%}
   .parity-row{grid-template-columns:1fr}
   .parity-row>*{grid-column:1!important}
+}
+
+@container (max-width:760px){
+  :where(.hero-panel,.customer360-hero,.feature-hub>header,.integration-header,.alert-center-header,.audit-header,.billing-header,.noc-header,.fiber-header,.fiber-map-header,.operations-header){display:grid;grid-template-columns:1fr}
+  :where(.billing-controls,.noc-controls,.fiber-controls,.alert-filters,.audit-filters,.fiber-map-layout){grid-template-columns:1fr}
+  :where(.billing-actions,.fiber-actions,.fiber-map-actions,.operations-tabs){width:100%;flex-wrap:wrap}
+}
+@container (max-width:520px){
+  :where(.metrics,.feature-metrics,.alert-metrics,.billing-metrics,.noc-metrics,.fiber-metrics,.fiber-map-metrics,.feature-grid,.operations-grid,.integration-grid,.access-grid,.customer-action-grid,.fiber-capacity-grid){grid-template-columns:1fr}
+  :where(.access-title,.incident-state,.readiness-list>div,.fiber-map-unmapped){display:grid;grid-template-columns:1fr}
+  :where(.access-actions,.card-actions){display:grid!important;grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
