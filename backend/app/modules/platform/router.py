@@ -310,7 +310,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build009",
+        "release": "2.0.0-rc1-build010",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -329,7 +329,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build009",
+        "release": "2.0.0-rc1-build010",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -338,6 +338,7 @@ def admin_capabilities(
             "incident_dispatch": "idempotent",
             "capability_parity": True,
             "customer_workspace": True,
+            "customer_action_center": "permission-and-configuration-gated",
             "tauc_controls": "configuration-gated",
             "crm_workflows": True,
             "network_topology": True,
