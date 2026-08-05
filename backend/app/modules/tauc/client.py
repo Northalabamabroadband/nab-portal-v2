@@ -17,6 +17,7 @@ from app.core.settings import get_settings
 settings = get_settings()
 _TAUC_REQUEST_LOCK = asyncio.Lock()
 _last_tauc_request_started_at = 0.0
+_tauc_cooldown_until = 0.0
 
 
 class TAUCError(RuntimeError):
@@ -89,8 +90,13 @@ def tauc_request_delay(
     last_started_at: float,
     now: float,
     minimum_interval: float,
+    cooldown_until: float = 0.0,
 ) -> float:
-    return max(0.0, minimum_interval - (now - last_started_at))
+    return max(
+        0.0,
+        minimum_interval - (now - last_started_at),
+        cooldown_until - now,
+    )
 
 
 def tauc_error_message(
@@ -125,7 +131,14 @@ class TAUCClient:
         self.client_key = Path(settings.tauc_client_key)
         self.verify_tls = settings.tauc_verify_tls
         self.timeout = settings.tauc_timeout_seconds
-        self.minimum_request_interval = settings.tauc_min_request_interval_seconds
+        self.minimum_request_interval = max(
+            1.35,
+            settings.tauc_min_request_interval_seconds,
+        )
+        self.rate_limit_backoff = max(
+            self.minimum_request_interval,
+            settings.tauc_rate_limit_backoff_seconds,
+        )
 
     def configured(self) -> bool:
         return bool(
@@ -205,7 +218,7 @@ class TAUCClient:
         json_data: Any = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> Any:
-        global _last_tauc_request_started_at
+        global _last_tauc_request_started_at, _tauc_cooldown_until
 
         if not self.configured():
             raise TAUCError(
@@ -224,10 +237,12 @@ class TAUCClient:
         ) as client:
             for attempt in range(2 if method == "GET" else 1):
                 async with _TAUC_REQUEST_LOCK:
+                    now = time.monotonic()
                     delay = tauc_request_delay(
                         _last_tauc_request_started_at,
-                        time.monotonic(),
+                        now,
                         self.minimum_request_interval,
+                        _tauc_cooldown_until,
                     )
                     if delay > 0:
                         await asyncio.sleep(delay)
@@ -255,34 +270,40 @@ class TAUCClient:
                     except httpx.HTTPError as exc:
                         raise TAUCError(f"Unable to reach TAUC: {exc}") from exc
 
-                try:
-                    payload = response.json() if response.content else {}
-                except ValueError as exc:
-                    raise TAUCError(
-                        f"TAUC returned invalid JSON (HTTP {response.status_code})"
-                    ) from exc
+                    try:
+                        payload = response.json() if response.content else {}
+                    except ValueError as exc:
+                        raise TAUCError(
+                            "TAUC returned invalid JSON "
+                            f"(HTTP {response.status_code})"
+                        ) from exc
 
-                if should_retry_tauc_request(
-                    method,
-                    response.status_code,
-                    payload,
-                    attempt,
-                ):
-                    continue
+                    if is_tauc_rate_limited(response.status_code, payload):
+                        _tauc_cooldown_until = max(
+                            _tauc_cooldown_until,
+                            time.monotonic() + self.rate_limit_backoff,
+                        )
+                        if should_retry_tauc_request(
+                            method,
+                            response.status_code,
+                            payload,
+                            attempt,
+                        ):
+                            continue
 
-                if response.status_code >= 400 or (
-                    isinstance(payload, dict)
-                    and payload.get("errorCode") not in (None, 0, "0")
-                ):
-                    raise TAUCError(tauc_error_message(
-                        response.status_code,
-                        method,
-                        self.base_url,
-                        path,
-                        payload,
-                        response.reason_phrase,
-                    ))
-                return payload
+                    if response.status_code >= 400 or (
+                        isinstance(payload, dict)
+                        and payload.get("errorCode") not in (None, 0, "0")
+                    ):
+                        raise TAUCError(tauc_error_message(
+                            response.status_code,
+                            method,
+                            self.base_url,
+                            path,
+                            payload,
+                            response.reason_phrase,
+                        ))
+                    return payload
 
         raise TAUCError("TAUC request could not be completed")
 
