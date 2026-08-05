@@ -1,9 +1,15 @@
 # MikroTik RouterOS integration
 
 RC1 Build 025 adds read-only MikroTik RouterOS v7 telemetry to NAB Mission
-Control. The portal reads router identity and resources, interfaces, IP
-addresses, routes, DHCP leases, and ARP entries through the RouterOS REST API.
-DHCP and ARP records are normalized into one connected-device view.
+Control for internal network infrastructure. It covers core, tower, POP, and
+backhaul-edge routers. The portal reads router identity and resources,
+interfaces, IP addresses, routes, DHCP leases, and ARP entries through the
+RouterOS REST API. DHCP and ARP records are normalized into one infrastructure
+neighbor view.
+
+This integration is not part of Customer 360, Managed Wi-Fi, the subscriber
+portal, or customer-device assignment. Access requires the internal
+`network.read` permission.
 
 ## RouterOS preparation
 
@@ -49,7 +55,7 @@ password or a private key in that directory.
 
 After deployment, sign in to Mission Control and open **RouterOS**. The page
 should show Connected, the router identity, interface state, routes, DHCP leases,
-and observed clients. **Systems Check** also reports the MikroTik probe.
+and observed infrastructure neighbors. **Systems Check** also reports the MikroTik probe.
 
 Build 025 intentionally has no router mutation endpoints. Configuration changes,
 reboots, firewall operations, and package updates remain RouterOS-only.
