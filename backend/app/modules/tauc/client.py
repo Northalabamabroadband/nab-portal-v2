@@ -34,6 +34,37 @@ def result_data(payload: Any) -> dict[str, Any]:
     return result if isinstance(result, dict) else {}
 
 
+def normalized_key(value: str) -> str:
+    return "".join(character for character in value.lower() if character.isalnum())
+
+
+def extract_records(payload: Any, candidate_keys: set[str]) -> list[dict[str, Any]]:
+    targets = {normalized_key(key) for key in candidate_keys}
+
+    def visit(value: Any) -> list[dict[str, Any]]:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                if (
+                    normalized_key(str(key)) in targets
+                    and isinstance(nested, list)
+                ):
+                    rows = [item for item in nested if isinstance(item, dict)]
+                    if rows:
+                        return rows
+            for nested in value.values():
+                rows = visit(nested)
+                if rows:
+                    return rows
+        elif isinstance(value, list):
+            for nested in value:
+                rows = visit(nested)
+                if rows:
+                    return rows
+        return []
+
+    return visit(payload)
+
+
 def is_tauc_rate_limited(status_code: int, payload: Any) -> bool:
     return status_code == 429 or (
         isinstance(payload, dict)
@@ -328,13 +359,25 @@ class TAUCClient:
             },
         )
 
-    def _control_path(self, template: str, device_id: str) -> str:
+    def _device_path(
+        self,
+        template: str,
+        device_id: str,
+        endpoint_name: str,
+    ) -> str:
         if not template:
-            raise TAUCError("TAUC control endpoint is not configured")
+            raise TAUCError(f"TAUC {endpoint_name} is not configured")
         return (
             template.replace("{device_id}", device_id)
             if "{device_id}" in template
             else f"{template.rstrip('/')}/{device_id}"
+        )
+
+    def _control_path(self, template: str, device_id: str) -> str:
+        return self._device_path(
+            template,
+            device_id,
+            "control endpoint",
         )
 
     async def set_wifi_ssid(self, device_id: str, value: str) -> Any:
@@ -355,9 +398,111 @@ class TAUCClient:
         path = self._control_path(settings.tauc_reboot_path, device_id)
         return await self.request("POST", path)
 
+    async def connected_clients(self, device_id: str) -> Any:
+        path = self._device_path(
+            settings.tauc_network_clients_path,
+            device_id,
+            "connected-device endpoint",
+        )
+        return await self.request("GET", path, params={"refresh": "true"})
+
+    async def gateway_snapshot(self, device_id: str) -> dict[str, Any]:
+        warnings: list[str] = []
+        device_payload = await self.device_info(device_id)
+        device = result_data(device_payload)
+        if not device and isinstance(device_payload, dict):
+            device = device_payload
+
+        embedded_clients = extract_records(device_payload, {
+            "clients",
+            "clientList",
+            "connectedDevices",
+            "connectedClients",
+            "stations",
+            "hosts",
+        })
+
+        wifi: dict[str, Any] = {}
+        wifi_networks: list[dict[str, Any]] = []
+        try:
+            wifi_payload = await self.wifi_ssid(device_id)
+            wifi = result_data(wifi_payload)
+            if not wifi and isinstance(wifi_payload, dict):
+                wifi = wifi_payload
+            wifi_networks = extract_records(wifi_payload, {
+                "result",
+                "ssids",
+                "ssidList",
+                "wifiSsids",
+                "wifiNetworks",
+                "networks",
+            })
+            if not wifi_networks and any(
+                key in wifi
+                for key in ("ssid", "ssidName", "name", "wifiName")
+            ):
+                wifi_networks = [wifi]
+        except TAUCError as exc:
+            warnings.append(f"Wi-Fi data unavailable: {exc}")
+
+        connected_devices = embedded_clients
+        connected_devices_source = (
+            "device_info" if embedded_clients else "unavailable"
+        )
+        if settings.tauc_network_clients_path:
+            try:
+                clients_payload = await self.connected_clients(device_id)
+                connected_devices = extract_records(clients_payload, {
+                    "result",
+                    "clients",
+                    "clientList",
+                    "connectedDevices",
+                    "connectedClients",
+                    "stations",
+                    "hosts",
+                })
+                connected_devices_source = "configured_endpoint"
+            except TAUCError as exc:
+                warnings.append(f"Connected-device data unavailable: {exc}")
+        elif not embedded_clients:
+            warnings.append(
+                "Connected-device data was not included in device information; "
+                "configure TAUC_NETWORK_CLIENTS_PATH for this tenant."
+            )
+
+        return {
+            "device_id": device_id,
+            "status": "partial" if warnings else "ready",
+            "device": device,
+            "wifi": wifi,
+            "wifi_networks": wifi_networks,
+            "connected_devices": connected_devices,
+            "connected_devices_source": connected_devices_source,
+            "connected_devices_endpoint_configured": bool(
+                settings.tauc_network_clients_path
+            ),
+            "warnings": warnings,
+        }
+
     async def diagnostics(self, device_id: str) -> Any:
-        path = self._control_path(settings.tauc_diagnostics_path, device_id)
-        return await self.request("GET", path)
+        snapshot = await self.gateway_snapshot(device_id)
+        snapshot["provider_diagnostics_configured"] = bool(
+            settings.tauc_diagnostics_path
+        )
+        if settings.tauc_diagnostics_path:
+            try:
+                path = self._device_path(
+                    settings.tauc_diagnostics_path,
+                    device_id,
+                    "diagnostics endpoint",
+                )
+                snapshot["provider_diagnostics"] = await self.request("GET", path)
+            except TAUCError as exc:
+                snapshot["warnings"].append(
+                    f"Provider diagnostics unavailable: {exc}"
+                )
+                snapshot["status"] = "partial"
+        return snapshot
 
     async def connection_status(self) -> dict[str, Any]:
         status: dict[str, Any] = {
@@ -366,6 +511,8 @@ class TAUCClient:
             "base_url": self.base_url,
             "device_lookup_path": settings.tauc_device_lookup_path,
             "network_lookup_path": settings.tauc_network_lookup_path,
+            "connected_devices_path": settings.tauc_network_clients_path or None,
+            "diagnostics_path": settings.tauc_diagnostics_path or None,
             "minimum_request_interval_seconds": self.minimum_request_interval,
             "authentication_mode": "mtls-aksk-x-authorization",
             "certificate_present": self.client_cert.is_file(),
