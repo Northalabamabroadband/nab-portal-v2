@@ -46,12 +46,26 @@ type SearchItem = {
 
 type CustomerActivity = {
   id: string;
-  kind: "note" | "ticket" | "workorder";
+  kind: "note" | "ticket" | "workorder" | "device";
   title: string;
   detail: string;
   status: string;
   actor: string;
   occurred_at: string;
+};
+
+type TaucAssignment = {
+  id: string;
+  client_id: string;
+  device_id: string;
+  serial_number: string;
+  mac_address?: string | null;
+  device_model?: string | null;
+  network_id?: string | null;
+  network_name?: string | null;
+  firmware_version?: string | null;
+  assigned_by: string;
+  created_at: string;
 };
 
 type Customer360 = {
@@ -83,6 +97,7 @@ type Customer360 = {
     workorders: Record<string, unknown>[];
   };
   activity?: CustomerActivity[];
+  tauc_devices?: TaucAssignment[];
 };
 
 type LiveSummary = {
@@ -254,6 +269,8 @@ function CustomerView({
   const [ssid, setSsid] = useState("");
   const [wifiPassword, setWifiPassword] = useState("");
   const [noteBody, setNoteBody] = useState("");
+  const [taucSerial, setTaucSerial] = useState("");
+  const [taucMac, setTaucMac] = useState("");
 
   useEffect(() => {
     setData(null);
@@ -307,6 +324,59 @@ function CustomerView({
       setActionMessage("Account note added to the customer timeline.");
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "Unable to add account note");
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const assignTaucDevice = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setActionBusy("TAUC assignment"); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(
+        `/customers/${clientId}/gateway/resolve`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            client_id: clientId,
+            serial_number: taucSerial.trim(),
+            mac_address: taucMac.trim()
+          })
+        },
+        token
+      );
+      setTaucSerial("");
+      setTaucMac("");
+      setData(await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      ));
+      setActionMessage("TAUC device assigned to this customer.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to assign TAUC device");
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const removeTaucDevice = async (assignment: TaucAssignment) => {
+    if (!window.confirm(`Remove TAUC device ${assignment.serial_number} from this customer?`)) return;
+    setActionBusy(`Remove ${assignment.id}`); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(
+        `/customers/${clientId}/gateways/${assignment.id}`,
+        { method: "DELETE" },
+        token
+      );
+      setData(await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      ));
+      setActionMessage("TAUC device removed from this customer.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to remove TAUC device");
     } finally {
       setActionBusy("");
     }
@@ -448,9 +518,49 @@ function CustomerView({
         <article className="panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">TAUC GATEWAY</p>
-              <h3>Gateway identity</h3>
+              <p className="eyebrow">TAUC DEVICES</p>
+              <h3>Customer assignments</h3>
             </div>
+            <span>{data.tauc_devices?.length ?? 0} assigned</span>
+          </div>
+          <form className="tauc-assignment-form" onSubmit={assignTaucDevice}>
+            <input
+              required
+              minLength={4}
+              maxLength={128}
+              value={taucSerial}
+              onChange={event => setTaucSerial(event.target.value)}
+              placeholder="TAUC serial number"
+            />
+            <input
+              required
+              maxLength={32}
+              value={taucMac}
+              onChange={event => setTaucMac(event.target.value)}
+              placeholder="Device MAC address"
+            />
+            <button disabled={Boolean(actionBusy)}>
+              {actionBusy === "TAUC assignment" ? "Verifying…" : "Verify and assign"}
+            </button>
+          </form>
+          <div className="tauc-assignment-list">
+            {(data.tauc_devices || []).map(assignment => (
+              <div className="tauc-assignment" key={assignment.id}>
+                <div>
+                  <strong>{assignment.device_model || "TAUC gateway"}</strong>
+                  <span>SN {assignment.serial_number} · {assignment.mac_address || "MAC unavailable"}</span>
+                  <small>{assignment.network_name || assignment.network_id || "Network unavailable"}</small>
+                </div>
+                <button
+                  type="button"
+                  className="danger-action"
+                  disabled={Boolean(actionBusy)}
+                  onClick={() => removeTaucDevice(assignment)}
+                >
+                  {actionBusy === `Remove ${assignment.id}` ? "Removing…" : "Remove"}
+                </button>
+              </div>
+            ))}
           </div>
           {data.gateway ? (
             <div className="readiness-list">
