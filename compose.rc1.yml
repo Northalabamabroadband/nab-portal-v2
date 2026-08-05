@@ -5,6 +5,7 @@ services:
     env_file: [.env]
     volumes:
       - ./secrets/tauc:/run/secrets/tauc:ro
+      - ./secrets/mikrotik:/run/secrets/mikrotik:ro
     ports: ["8200:8000"]
     depends_on:
       postgres: {condition: service_healthy}

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.modules.auth.dependencies import require_permission
 from app.modules.live.manager import manager
+from app.modules.mikrotik.client import MikroTikClient
 from app.modules.tauc.client import TAUCClient
 from app.modules.uisp.client import UISPClient
 
@@ -20,18 +22,29 @@ async def live_summary(
 ) -> dict:
     uisp = UISPClient()
     tauc = TAUCClient()
+    mikrotik = MikroTikClient()
 
-    uisp_status = await uisp.connection_status()
-    tauc_status = await tauc.connection_status()
+    uisp_status, tauc_status, mikrotik_status = await asyncio.gather(
+        uisp.connection_status(),
+        tauc.connection_status(),
+        mikrotik.connection_status(),
+    )
 
     return {
         "status": (
             "operational"
-            if uisp_status.get("connected")
+            if (
+                uisp_status.get("connected")
+                and (
+                    not mikrotik_status.get("configured")
+                    or mikrotik_status.get("connected")
+                )
+            )
             else "degraded"
         ),
         "uisp": uisp_status,
         "tauc": tauc_status,
+        "mikrotik": mikrotik_status,
         "active_outages": 0,
         "customers_affected": 0,
         "open_tickets": 0,
