@@ -184,18 +184,6 @@ class TAUCClient:
         method = method.upper()
         path = path if path.startswith("/") else f"/{path}"
         body = self._body(json_data) if json_data is not None else None
-        authorization, content_md5 = self._authorization(path, body)
-        headers = {
-            "Accept": "application/json",
-            "X-Authorization": authorization,
-        }
-        if body is not None:
-            headers.update({
-                "Content-Type": "application/json",
-                "Content-MD5": content_md5 or "",
-            })
-        if extra_headers:
-            headers.update(extra_headers)
 
         async with httpx.AsyncClient(
             cert=(str(self.client_cert), str(self.client_key)),
@@ -213,6 +201,18 @@ class TAUCClient:
                     if delay > 0:
                         await asyncio.sleep(delay)
                     _last_tauc_request_started_at = time.monotonic()
+                    authorization, content_md5 = self._authorization(path, body)
+                    headers = {
+                        "Accept": "application/json",
+                        "X-Authorization": authorization,
+                    }
+                    if body is not None:
+                        headers.update({
+                            "Content-Type": "application/json",
+                            "Content-MD5": content_md5 or "",
+                        })
+                    if extra_headers:
+                        headers.update(extra_headers)
                     try:
                         response = await client.request(
                             method,
