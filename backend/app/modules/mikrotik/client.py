@@ -76,18 +76,18 @@ def merge_network_neighbors(
     leases: list[dict[str, Any]],
     arp_entries: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    clients: dict[str, dict[str, Any]] = {}
+    neighbors: dict[str, dict[str, Any]] = {}
 
     def key_for(row: dict[str, Any], prefix: str) -> str:
         mac = normalize_mac(row.get("mac-address") or row.get("mac"))
         address = str(row.get("address") or row.get("ip") or "")
-        return mac or address or f"{prefix}:{len(clients)}"
+        return mac or address or f"{prefix}:{len(neighbors)}"
 
     for lease in leases:
         mac = normalize_mac(lease.get("mac-address"))
         address = str(lease.get("address") or "")
         key = key_for(lease, "lease")
-        clients[key] = {
+        neighbors[key] = {
             "id": key,
             "hostname": str(
                 lease.get("host-name")
@@ -112,7 +112,7 @@ def merge_network_neighbors(
 
     for arp in arp_entries:
         key = key_for(arp, "arp")
-        existing = clients.get(key)
+        existing = neighbors.get(key)
         if existing is None:
             existing = {
                 "id": key,
@@ -127,7 +127,7 @@ def merge_network_neighbors(
                 "lease": None,
                 "arp": arp,
             }
-            clients[key] = existing
+            neighbors[key] = existing
         else:
             existing["arp"] = arp
             existing["source"] = "dhcp+arp"
@@ -142,7 +142,7 @@ def merge_network_neighbors(
             )
 
     return sorted(
-        clients.values(),
+        neighbors.values(),
         key=lambda row: (
             not bool(row["active"]),
             str(row["hostname"]).lower(),
