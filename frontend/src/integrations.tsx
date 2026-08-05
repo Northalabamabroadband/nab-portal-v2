@@ -134,7 +134,7 @@ export function IntegrationHealth({ token }: { token: string }) {
             <ServiceCard title="UISP CRM" status={data.uisp_crm} />
             <ServiceCard title="UISP NMS" status={data.uisp_nms} />
             <ServiceCard title="TP-Link TAUC" status={data.tauc} />
-            <ServiceCard title="MikroTik RouterOS" status={data.mikrotik} />
+            <ServiceCard title="MikroTik NOC" status={data.mikrotik} />
           </>
         )}
       </div>
