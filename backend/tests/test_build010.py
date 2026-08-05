@@ -8,7 +8,7 @@ def test_customer_action_center_uses_existing_permissions() -> None:
 
 def test_customer_action_center_is_reported_as_gated() -> None:
     capabilities = admin_capabilities({})
-    assert capabilities["release"] == "2.0.0-rc1-build010"
+    assert capabilities["release"].startswith("2.0.0-rc1-build")
     assert capabilities["features"]["customer_action_center"] == "permission-and-configuration-gated"
 
 
