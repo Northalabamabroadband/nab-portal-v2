@@ -106,8 +106,8 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
           <p>{incident.devices.length} device{incident.devices.length === 1 ? "" : "s"} offline · {incident.customers_affected} customers affected</p>
           <strong>{incident.alert_count} linked alerts</strong>
           <small>{incident.recommended_action}</small>
-          <button className="dispatch-button" onClick={() => dispatch(incident.id)} disabled={Boolean(dispatching)}>
-            {dispatching === incident.id ? "Dispatching…" : "Create response package"}
+          <button className="dispatch-button" onClick={() => dispatch(incident.id)} disabled={Boolean(dispatching) || Boolean(incident.response_ready)}>
+            {incident.response_ready ? "Response package active" : dispatching === incident.id ? "Dispatching…" : "Create response package"}
           </button>
         </article>
       )}</div>
