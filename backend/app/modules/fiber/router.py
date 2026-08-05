@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.dependencies import database_session
 from app.models.fiber import FiberAsset, FiberRoute
 from app.modules.auth.dependencies import require_permission
 from app.modules.fiber.schemas import (
@@ -18,13 +18,6 @@ from app.modules.fiber.schemas import (
 
 router = APIRouter(prefix="/fiber", tags=["fiber"])
 
-
-def database_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @router.get("/assets", response_model=list[FiberAssetRead])
