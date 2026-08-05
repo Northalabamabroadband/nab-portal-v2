@@ -2,9 +2,9 @@ name: RC1 Build Validation
 
 on:
   push:
-    branches: [rc1-build004, rc1-build005, rc1-build006, rc1-build007, rc1-build008, rc1-build009, rc1-build010]
+    branches: [rc1-build004, rc1-build005, rc1-build006, rc1-build007, rc1-build008, rc1-build009, rc1-build010, rc1-build011]
   pull_request:
-    branches: [main, rc1-build004, rc1-build005, rc1-build006, rc1-build007, rc1-build008, rc1-build009]
+    branches: [main, rc1-build004, rc1-build005, rc1-build006, rc1-build007, rc1-build008, rc1-build009, rc1-build010]
 
 permissions:
   contents: read
