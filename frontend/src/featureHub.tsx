@@ -38,12 +38,12 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
     try {
       if (mode === "admin") {
         const [capabilities, access] = await Promise.all([
-          load(endpoint[mode], token),
-          load("/admin/access", token)
+          load<Json>(endpoint[mode], token),
+          load<Json>("/admin/access", token)
         ]);
         setData({ ...capabilities, access });
       } else {
-        setData(await load(endpoint[mode], token));
+        setData(await load<Json>(endpoint[mode], token));
       }
     }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load feature"); }
