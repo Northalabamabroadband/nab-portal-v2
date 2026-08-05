@@ -333,13 +333,46 @@ class TAUCClient:
             serial_number=serial_number,
             mac_address=mac_address,
         )
+        network_name = str(
+            device.get("networkName") or device.get("network") or ""
+        )
+        network_id = str(
+            device.get("networkId") or device.get("networkID") or ""
+        )
+        if not network_id and network_name:
+            network_id = await self.network_id_by_name(network_name)
         return {
-            "networkId": str(
-                device.get("networkId") or device.get("networkID") or ""
-            ),
+            "networkId": network_id,
+            "networkName": network_name,
             "deviceId": device.get("deviceId"),
             "device": device,
         }
+
+    async def network_id_by_name(self, network_name: str) -> str:
+        name = network_name.strip()
+        if not name:
+            return ""
+        payload = await self.request(
+            "GET",
+            settings.tauc_network_id_lookup_path,
+            params={"networkName": name},
+        )
+        rows = extract_records(
+            payload,
+            {"result", "networks", "networkList"},
+        )
+        selected = next(
+            (
+                row
+                for row in rows
+                if str(row.get("networkName") or "").casefold()
+                == name.casefold()
+            ),
+            rows[0] if rows else {},
+        )
+        return str(
+            selected.get("networkId") or selected.get("id") or ""
+        )
 
     async def wifi_ssid(self, device_id: str) -> Any:
         path = self._device_path(
@@ -469,15 +502,36 @@ class TAUCClient:
         )
         return await self.request("GET", path, params={"refresh": "true"})
 
-    async def gateway_snapshot(self, device_id: str) -> dict[str, Any]:
+    async def gateway_snapshot(
+        self,
+        device_id: str,
+        *,
+        network_id: str = "",
+        network_name: str = "",
+    ) -> dict[str, Any]:
         warnings: list[str] = []
         device_payload = await self.device_info(device_id)
         device = result_data(device_payload)
         if not device and isinstance(device_payload, dict):
             device = device_payload
-        network_id = str(
+        network_id = network_id.strip() or str(
             device.get("networkId") or device.get("networkID") or ""
         )
+        network_name = network_name.strip() or str(
+            device.get("networkName") or device.get("network") or ""
+        )
+        if not network_id and network_name:
+            try:
+                network_id = await self.network_id_by_name(network_name)
+                if not network_id:
+                    warnings.append(
+                        "TAUC did not return a network ID for the assigned "
+                        f"network name '{network_name}'."
+                    )
+            except TAUCError as exc:
+                warnings.append(
+                    f"TAUC network ID lookup unavailable: {exc}"
+                )
 
         embedded_clients = extract_records(device_payload, {
             "clients",
@@ -543,6 +597,7 @@ class TAUCClient:
         return {
             "device_id": device_id,
             "network_id": network_id or None,
+            "network_name": network_name or None,
             "status": "partial" if warnings else "ready",
             "device": device,
             "wifi": wifi,
@@ -582,6 +637,7 @@ class TAUCClient:
             "base_url": self.base_url,
             "device_lookup_path": settings.tauc_device_lookup_path,
             "network_lookup_path": settings.tauc_network_lookup_path,
+            "network_id_lookup_path": settings.tauc_network_id_lookup_path,
             "wifi_ssid_read_path": settings.tauc_wifi_ssid_read_path,
             "connected_devices_path": settings.tauc_network_clients_path or None,
             "diagnostics_path": settings.tauc_diagnostics_path or None,
