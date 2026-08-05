@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import database_session
 from app.models.observability import OperationalAlert
-from app.models.operations import CustomerNote, InventoryItem, SupportTicket, WorkOrder
+from app.models.operations import CustomerNote, CustomerTaucAssignment, InventoryItem, SupportTicket, WorkOrder
 from app.modules.auth.dependencies import require_permission
 from app.modules.auth.service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
 from app.modules.customer360.service import customer_360
@@ -23,7 +23,7 @@ from app.modules.incidents.service import (
 )
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build017"])
+router = APIRouter(prefix="/platform", tags=["platform-build018"])
 
 
 class CustomerNoteCreate(BaseModel):
@@ -304,10 +304,33 @@ async def customer_workspace(
         .order_by(CustomerNote.created_at.desc())
         .limit(100)
     ).all())
+    assignments = list(session.scalars(
+        select(CustomerTaucAssignment)
+        .where(CustomerTaucAssignment.client_id == client_id)
+        .order_by(CustomerTaucAssignment.created_at.asc())
+    ).all())
     customer["support"] = {
         "tickets": [{"id": x.id, "subject": x.subject, "status": x.status, "priority": x.priority} for x in tickets],
         "workorders": [{"id": x.id, "title": x.title, "status": x.status, "scheduled_for": x.scheduled_for} for x in orders],
     }
+    customer["tauc_devices"] = [assignment.as_dict() for assignment in assignments]
+    if assignments and not customer.get("gateway"):
+        primary = assignments[0]
+        customer["gateway"] = {
+            "source": "customer_assignment",
+            "device": {
+                "deviceId": primary.tauc_device_id,
+                "deviceModel": primary.device_model,
+                "sn": primary.serial_number,
+                "mac": primary.mac_address,
+                "fwVersion": primary.firmware_version,
+            },
+            "network": {
+                "networkId": primary.network_id,
+                "networkName": primary.network_name,
+            },
+        }
+        customer.pop("gateway_error", None)
     activity = [
         {
             "id": x.id,
@@ -338,6 +361,15 @@ async def customer_workspace(
         "actor": x.created_by,
         "occurred_at": x.created_at,
     } for x in orders)
+    activity.extend({
+        "id": x.id,
+        "kind": "device",
+        "title": "TAUC device assigned",
+        "detail": f"{x.device_model or 'Gateway'} · SN {x.serial_number}",
+        "status": "assigned",
+        "actor": x.assigned_by,
+        "occurred_at": x.created_at,
+    } for x in assignments)
     customer["activity"] = sorted(
         activity,
         key=lambda item: item["occurred_at"],
@@ -383,7 +415,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build017",
+        "release": "2.0.0-rc1-build018",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -402,7 +434,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build017",
+        "release": "2.0.0-rc1-build018",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -421,5 +453,6 @@ def admin_capabilities(
             "role_administration": True,
             "access_control_center": "guarded",
             "customer_activity_timeline": True,
+            "tauc_customer_assignments": "durable-and-unique",
         },
     }
