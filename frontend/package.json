@@ -1,7 +1,7 @@
 {
   "name": "nab-portal-v2-web",
   "private": true,
-  "version": "2.0.0-rc1-build004",
+  "version": "2.0.0-rc1-build005",
   "type": "module",
   "scripts": {
     "dev": "vite",
