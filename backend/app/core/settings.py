@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "production"
     app_name: str = "NAB Mission Control"
-    app_version: str = "2.0.0-rc1-build023"
+    app_version: str = "2.0.0-rc1-build024"
     app_secret_key: str
     database_url: str
     redis_url: str
@@ -41,7 +41,9 @@ class Settings(BaseSettings):
     tauc_client_key: str = "/run/secrets/tauc/client.key"
     tauc_verify_tls: bool = True
     tauc_timeout_seconds: float = 20.0
-    tauc_min_request_interval_seconds: float = 1.05
+    tauc_min_request_interval_seconds: float = 1.35
+    tauc_rate_limit_backoff_seconds: float = 3.0
+    tauc_snapshot_cache_seconds: float = 15.0
     tauc_test_serial_number: str = ""
     tauc_test_mac_address: str = ""
     tauc_network_clients_path: str = "/v1/openapi/network-data-collection/network-clients/{network_id}"
