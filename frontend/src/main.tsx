@@ -442,6 +442,7 @@ function Dashboard({
             ["✓", "Audit"],
             ["⇄", "Systems Check"],
             ["◎", "Subscriber Portal"],
+            ["≡", "Capability Parity"],
             ["⚙", "Access Control"]
           ].map(([icon, label]) => (
             <button
@@ -530,6 +531,8 @@ function Dashboard({
           <FeatureHub token={token} mode="wifi" />
         ) : activePage === "Subscriber Portal" ? (
           <FeatureHub token={token} mode="portal" />
+        ) : activePage === "Capability Parity" ? (
+          <FeatureHub token={token} mode="parity" />
         ) : activePage === "Access Control" ? (
           <FeatureHub token={token} mode="admin" />
         ) : activePage !== "Mission Control" && activePage !== "Customers" ? (
