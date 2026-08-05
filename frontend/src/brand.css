@@ -15,3 +15,12 @@ input,select,textarea,.billing-controls>input,.noc-controls input,.noc-controls 
 .error-message{border-color:rgba(239,68,68,.34)!important;background:rgba(127,29,29,.18)!important}.empty-state{background:rgba(2,11,21,.52)}
 @media(max-width:800px){.sidebar{width:min(86vw,310px)!important}.workspace{margin-left:0!important;padding:.8rem!important}.topbar{margin:-.8rem -.8rem 1rem!important;padding:.75rem .8rem!important}.topbar .eyebrow{display:none}.topbar h1{font-size:1.03rem!important}.topbar-actions .live-chip{max-width:88px;overflow:hidden}.sidebar-brand{padding-top:.15rem!important}}
 @media(max-width:520px){.login-card{border-radius:20px!important}.login-card .brand-mark{width:78px!important;height:78px!important}.metrics,.billing-metrics,.noc-metrics{gap:.55rem!important}.panel,.metrics article,.billing-metrics article,.noc-metrics article{border-radius:13px!important}}
+
+
+/* Build 006 — Rocket City mission-control identity */
+body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.3;background-image:radial-gradient(circle at 12% 18%,rgba(255,255,255,.55) 0 1px,transparent 1.5px),radial-gradient(circle at 72% 14%,rgba(125,211,252,.55) 0 1px,transparent 1.5px),radial-gradient(circle at 88% 72%,rgba(255,255,255,.4) 0 1px,transparent 1.5px);background-size:180px 180px,260px 260px,320px 320px}
+.login-card:after,.hero-panel:before,.feature-hub>header:before{content:"";position:absolute;width:180px;height:180px;border:1px solid rgba(125,211,252,.12);border-radius:50%;box-shadow:0 0 0 22px rgba(14,165,233,.025),0 0 0 48px rgba(14,165,233,.018);pointer-events:none}
+.login-card:after{right:-76px;bottom:-88px}.feature-hub>header{position:relative;overflow:hidden}.feature-hub>header:before{right:-92px;top:-108px}.hero-panel:before{right:34px;top:-120px}
+.sidebar-brand strong:after{content:"  / FLIGHT DECK";color:var(--nab-cyan);font-size:.58rem;letter-spacing:.12em}
+.topbar .eyebrow:before{content:"●";margin-right:.45rem;color:#fb923c;text-shadow:0 0 12px rgba(251,146,60,.75)}
+.mission-chip{display:inline-flex;align-items:center;gap:.4rem;padding:.35rem .6rem;border:1px solid rgba(251,146,60,.25);border-radius:999px;background:rgba(124,45,18,.16);color:#fdba74;font-size:.7rem;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
