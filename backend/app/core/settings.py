@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     mikrotik_username: str = ""
     mikrotik_password: str = ""
     mikrotik_verify_tls: bool = True
+    mikrotik_allow_insecure_http: bool = False
     mikrotik_ca_cert: str = ""
     mikrotik_timeout_seconds: float = 15.0
 
