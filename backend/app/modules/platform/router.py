@@ -22,7 +22,7 @@ from app.modules.incidents.service import (
 )
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build008"])
+router = APIRouter(prefix="/platform", tags=["platform-build009"])
 
 
 
@@ -290,18 +290,53 @@ def customer_portal_readiness(
     }
 
 
+
+@router.get("/parity")
+def capability_parity(
+    claims: Annotated[dict, Depends(require_permission("admin.manage"))],
+) -> dict:
+    capabilities = [
+        {"domain": "Customer 360", "read": True, "write": True, "source": "UISP CRM + local support"},
+        {"domain": "Billing and payments", "read": True, "write": False, "source": "UISP CRM authoritative"},
+        {"domain": "Support tickets", "read": True, "write": True, "source": "V2 shared operations"},
+        {"domain": "Work orders and dispatch", "read": True, "write": True, "source": "V2 shared operations"},
+        {"domain": "Inventory", "read": True, "write": True, "source": "V2 shared operations"},
+        {"domain": "Network telemetry", "read": True, "write": False, "source": "UISP NMS authoritative"},
+        {"domain": "Outages and incidents", "read": True, "write": True, "source": "UISP NMS + response dispatch"},
+        {"domain": "Fiber assets and mapping", "read": True, "write": True, "source": "V2 fiber services"},
+        {"domain": "Managed Wi-Fi", "read": True, "write": "configuration-gated", "source": "TAUC"},
+        {"domain": "Alerts", "read": True, "write": True, "source": "V2 observability"},
+        {"domain": "Roles and audit", "read": True, "write": True, "source": "V2 identity and audit"},
+        {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
+    ]
+    return {
+        "release": "2.0.0-rc1-build009",
+        "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
+        "capabilities": capabilities,
+        "interactive_domains": sum(row["write"] is True for row in capabilities),
+        "total_domains": len(capabilities),
+        "external_controls": [
+            "UISP CRM remains authoritative for billing mutations.",
+            "UISP NMS remains authoritative for network configuration.",
+            "TAUC writes remain disabled until verified tenant paths are configured.",
+            "Customer self-service remains gated on identity recovery and policy controls.",
+        ],
+    }
+
+
 @router.get("/admin/capabilities")
 def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build008",
+        "release": "2.0.0-rc1-build009",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
             "outage_intelligence": True,
             "incident_command": True,
             "incident_dispatch": "idempotent",
+            "capability_parity": True,
             "customer_workspace": True,
             "tauc_controls": "configuration-gated",
             "crm_workflows": True,
