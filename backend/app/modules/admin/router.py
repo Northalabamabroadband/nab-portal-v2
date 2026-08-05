@@ -7,19 +7,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.database import SessionLocal
+from app.core.dependencies import database_session
 from app.models.identity import AdminUser, Permission, Role
 from app.modules.auth.dependencies import require_permission
 
 router = APIRouter(prefix="/admin", tags=["administration"])
 
-
-def database_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 class UserAccessUpdate(BaseModel):
