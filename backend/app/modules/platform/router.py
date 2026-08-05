@@ -457,6 +457,6 @@ def admin_capabilities(
             "tauc_request_throttle": "one-per-second-with-safe-get-retry",
             "tauc_live_gateway_snapshot": "wifi-and-connected-devices",
             "tauc_network_clients": "network-id-scoped",
-            "tauc_network_id_resolution": "assignment-or-network-name",
+            "tauc_network_id_resolution": "assignment-name-or-device-identity",
         },
     }
