@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { request as load } from "./api";
 
-type Mode = "outages" | "network" | "field" | "reports" | "portal" | "admin" | "wifi";
+type Mode = "incidents" | "outages" | "network" | "field" | "reports" | "portal" | "admin" | "wifi";
 type Json = Record<string, any>;
 
 const endpoint: Record<Mode, string> = {
+  incidents: "/platform/incidents/command",
   outages: "/platform/outages",
   network: "/platform/network-intelligence",
   field: "/platform/field/my-work",
@@ -15,6 +16,7 @@ const endpoint: Record<Mode, string> = {
 };
 
 const title: Record<Mode, string> = {
+  incidents: "Incident Command",
   outages: "Outage Intelligence",
   network: "Network Topology & Performance",
   field: "Ground Crew Mobile Queue",
@@ -54,10 +56,32 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
 
   return <section className="feature-hub">
     <header>
-      <div><p className="eyebrow">RC1 BUILD 005</p><h2>{title[mode]}</h2></div>
+      <div><p className="eyebrow">RC1 BUILD 007</p><h2>{title[mode]}</h2></div>
       <button onClick={refresh}>{working ? "Refreshing…" : "Refresh"}</button>
     </header>
     {error && <div className="error-message">{error}</div>}
+    {data && mode === "incidents" && <>
+      <div className="incident-state">
+        <span>Mission state</span>
+        <strong className={`state-${data.mission_state}`}>{String(data.mission_state || "unknown")}</strong>
+      </div>
+      <div className="feature-metrics">
+        <Value label="Active incidents" value={data.summary?.active_incidents} />
+        <Value label="Customers affected" value={data.summary?.customers_affected} />
+        <Value label="Critical alerts" value={data.summary?.critical_alerts} />
+        <Value label="Unassigned ground work" value={data.summary?.unassigned_workorders} />
+      </div>
+      <div className="feature-grid incident-grid">{(data.incidents || []).map((incident: Json) =>
+        <article key={incident.id}>
+          <b>{incident.severity}</b>
+          <h3>{incident.site_name}</h3>
+          <p>{incident.devices.length} device{incident.devices.length === 1 ? "" : "s"} offline · {incident.customers_affected} customers affected</p>
+          <strong>{incident.alert_count} linked alerts</strong>
+          <small>{incident.recommended_action}</small>
+        </article>
+      )}</div>
+      {!data.incidents?.length && <article className="feature-detail"><h3>All systems nominal</h3><p>No active device-offline incidents were detected in the current UISP telemetry.</p></article>}
+    </>}
     {data && mode === "outages" && <>
       <div className="feature-metrics">
         <Value label="Active outages" value={data.active_outages} />
