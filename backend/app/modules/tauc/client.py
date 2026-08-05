@@ -724,6 +724,8 @@ class TAUCClient:
             "connected_devices_path": settings.tauc_network_clients_path or None,
             "diagnostics_path": settings.tauc_diagnostics_path or None,
             "minimum_request_interval_seconds": self.minimum_request_interval,
+            "rate_limit_backoff_seconds": self.rate_limit_backoff,
+            "snapshot_cache_seconds": settings.tauc_snapshot_cache_seconds,
             "authentication_mode": "mtls-aksk-x-authorization",
             "certificate_present": self.client_cert.is_file(),
             "private_key_present": self.client_key.is_file(),
