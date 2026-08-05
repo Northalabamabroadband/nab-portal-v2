@@ -455,6 +455,7 @@ def admin_capabilities(
             "customer_activity_timeline": True,
             "tauc_customer_assignments": "durable-and-unique",
             "tauc_request_throttle": "one-per-second-with-safe-get-retry",
-            "tauc_live_gateway_snapshot": "wifi-and-connected-devices",\n            "tauc_network_clients": "network-id-scoped",
+            "tauc_live_gateway_snapshot": "wifi-and-connected-devices",
+            "tauc_network_clients": "network-id-scoped",
         },
     }
