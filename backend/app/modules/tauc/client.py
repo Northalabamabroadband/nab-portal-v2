@@ -341,6 +341,13 @@ class TAUCClient:
         )
         if not network_id and network_name:
             network_id = await self.network_id_by_name(network_name)
+        if not network_id:
+            resolved = await self.network_by_device(
+                serial_number=serial_number,
+                mac_address=mac_address or "",
+            )
+            network_id = resolved["networkId"]
+            network_name = network_name or resolved["networkName"]
         return {
             "networkId": network_id,
             "networkName": network_name,
@@ -373,6 +380,42 @@ class TAUCClient:
         return str(
             selected.get("networkId") or selected.get("id") or ""
         )
+
+    async def network_by_device(
+        self,
+        *,
+        serial_number: str = "",
+        mac_address: str = "",
+    ) -> dict[str, str]:
+        serial = serial_number.strip()
+        mac = compact_mac(mac_address)
+        if not serial and not mac:
+            return {"networkId": "", "networkName": ""}
+        params = {"page": "1", "pageSize": "10"}
+        if serial:
+            params["sn"] = serial
+        if mac:
+            params["mac"] = mac
+        payload = await self.request(
+            "GET",
+            settings.tauc_network_list_path,
+            params=params,
+        )
+        rows = extract_records(
+            payload,
+            {"data", "result", "networks", "networkList"},
+        )
+        selected = rows[0] if rows else {}
+        return {
+            "networkId": str(
+                selected.get("networkId") or selected.get("id") or ""
+            ),
+            "networkName": str(
+                selected.get("networkName")
+                or selected.get("network_name")
+                or ""
+            ),
+        }
 
     async def wifi_ssid(self, device_id: str) -> Any:
         path = self._device_path(
@@ -508,6 +551,8 @@ class TAUCClient:
         *,
         network_id: str = "",
         network_name: str = "",
+        serial_number: str = "",
+        mac_address: str = "",
     ) -> dict[str, Any]:
         warnings: list[str] = []
         device_payload = await self.device_info(device_id)
@@ -520,17 +565,32 @@ class TAUCClient:
         network_name = network_name.strip() or str(
             device.get("networkName") or device.get("network") or ""
         )
+        resolution_errors: list[str] = []
         if not network_id and network_name:
             try:
                 network_id = await self.network_id_by_name(network_name)
-                if not network_id:
-                    warnings.append(
-                        "TAUC did not return a network ID for the assigned "
-                        f"network name '{network_name}'."
-                    )
             except TAUCError as exc:
+                resolution_errors.append(str(exc))
+        if not network_id and (serial_number.strip() or mac_address.strip()):
+            try:
+                resolved = await self.network_by_device(
+                    serial_number=serial_number,
+                    mac_address=mac_address,
+                )
+                network_id = resolved["networkId"]
+                network_name = network_name or resolved["networkName"]
+            except TAUCError as exc:
+                resolution_errors.append(str(exc))
+        if not network_id:
+            if resolution_errors:
                 warnings.append(
-                    f"TAUC network ID lookup unavailable: {exc}"
+                    "TAUC network ID resolution failed: "
+                    + "; ".join(resolution_errors)
+                )
+            else:
+                warnings.append(
+                    "TAUC did not return a network ID; reassign this gateway "
+                    "so the portal can resolve it from the saved serial and MAC."
                 )
 
         embedded_clients = extract_records(device_payload, {
@@ -638,6 +698,7 @@ class TAUCClient:
             "device_lookup_path": settings.tauc_device_lookup_path,
             "network_lookup_path": settings.tauc_network_lookup_path,
             "network_id_lookup_path": settings.tauc_network_id_lookup_path,
+            "network_list_path": settings.tauc_network_list_path,
             "wifi_ssid_read_path": settings.tauc_wifi_ssid_read_path,
             "connected_devices_path": settings.tauc_network_clients_path or None,
             "diagnostics_path": settings.tauc_diagnostics_path or None,
