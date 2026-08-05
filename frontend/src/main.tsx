@@ -426,6 +426,7 @@ function Dashboard({
         <nav>
           {[
             ["⌂", "Mission Control"],
+            ["◆", "Incident Command"],
             ["◉", "Customers"],
             ["⌁", "Managed Wi-Fi"],
             ["⌘", "Network"],
@@ -499,6 +500,8 @@ function Dashboard({
               setActivePage("Customers");
             }}
           />
+        ) : activePage === "Incident Command" ? (
+          <FeatureHub token={token} mode="incidents" />
         ) : activePage === "Fiber Map" ? (
           <FiberMap token={token} />
         ) : activePage === "Fiber" ? (
