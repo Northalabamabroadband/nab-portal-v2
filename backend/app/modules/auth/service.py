@@ -21,6 +21,10 @@ DEFAULT_PERMISSIONS = {
     "network.write": "Modify network operations",
     "audit.read": "View audit events",
     "admin.manage": "Manage administrators and roles",
+    "field.read": "View assigned field operations",
+    "field.write": "Update assigned field operations",
+    "reports.read": "View operational reports",
+    "portal.manage": "Manage customer portal configuration",
 }
 
 DEFAULT_ROLES = {
@@ -33,6 +37,7 @@ DEFAULT_ROLES = {
         "network.read",
         "network.write",
         "audit.read",
+        "reports.read",
     ],
     "billing": [
         "command_post.view",
@@ -53,6 +58,8 @@ DEFAULT_ROLES = {
         "customers.read",
         "wifi.read",
         "network.read",
+        "field.read",
+        "field.write",
     ],
 }
 

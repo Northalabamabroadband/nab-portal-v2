@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.modules.uisp.client import UISPClient, UISPError, extract_records
+from app.modules.uisp.client import UISPClient
 
 
 def first_value(record: dict[str, Any], *keys: str, default: Any = None) -> Any:
@@ -181,17 +181,8 @@ def derive_alarms(devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 async def load_devices(limit: int = 500) -> list[dict[str, Any]]:
     uisp = UISPClient("nms")
-
-    payload = await uisp.get(
-        "/nms/api/v2.1/devices"
-    )
-
-    records = extract_records(payload)
-
-    return [
-        normalize_device(record)
-        for record in records[:min(max(limit, 1), 2000)]
-    ]
+    records = await uisp.nms_devices(limit)
+    return [normalize_device(record) for record in records]
 
 
 async def overview(limit: int = 500) -> dict[str, Any]:

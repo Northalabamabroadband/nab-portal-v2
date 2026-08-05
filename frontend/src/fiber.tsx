@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { request } from "./api";
 
 type FiberAsset = {
   id: string;
@@ -40,25 +41,6 @@ type FiberSummary = {
   utilization_percent: number;
 };
 
-async function request<T>(path: string, token: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`/api/v2${path}`, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {})
-    },
-    credentials: "include"
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || `Request failed: ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
-}
 
 export function FiberOperations({ token }: { token: string }) {
   const [assets, setAssets] = useState<FiberAsset[]>([]);

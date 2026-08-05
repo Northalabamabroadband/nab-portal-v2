@@ -5,20 +5,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.dependencies import database_session
 from app.models.operations import InventoryItem
 from app.modules.auth.dependencies import require_permission
 from app.modules.inventory.schemas import InventoryAdjust, InventoryCreate, InventoryRead
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
-
-def database_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @router.get("", response_model=list[InventoryRead])

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -24,9 +26,11 @@ async def integration_health(
     nms = UISPClient("nms")
     tauc = TAUCClient()
 
-    crm_status = await crm.connection_status()
-    nms_status = await nms.connection_status()
-    tauc_status = await tauc.connection_status()
+    crm_status, nms_status, tauc_status = await asyncio.gather(
+        crm.connection_status(),
+        nms.connection_status(),
+        tauc.connection_status(),
+    )
 
     return {
         "uisp_crm": crm_status,

@@ -100,16 +100,16 @@ async def customer_360(client_id: str) -> dict[str, Any]:
         tauc = TAUCClient()
 
         try:
-            device, network = await asyncio.gather(
-                tauc.device_lookup(
-                    serial_number=str(serial_number),
-                    mac_address=str(mac_address) if mac_address else None,
-                ),
-                tauc.network_lookup(
-                    serial_number=str(serial_number),
-                    mac_address=str(mac_address) if mac_address else None,
-                ),
+            device = await tauc.device_lookup(
+                serial_number=str(serial_number),
+                mac_address=str(mac_address) if mac_address else None,
             )
+            network = {
+                "networkId": str(
+                    device.get("networkId") or device.get("networkID") or ""
+                ),
+                "deviceId": device.get("deviceId"),
+            }
             result["gateway"] = {
                 "device": device,
                 "network": network,

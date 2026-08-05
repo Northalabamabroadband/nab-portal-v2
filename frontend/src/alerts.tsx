@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { request } from "./api";
 
 type Alert = {
   id: string;
@@ -12,28 +13,6 @@ type Alert = {
   created_at: string;
 };
 
-async function request<T>(
-  path: string,
-  token: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const response = await fetch(`/api/v2${path}`, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {})
-    },
-    credentials: "include"
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || `Request failed: ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
-}
 
 export function AlertCenter({ token }: { token: string }) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -87,8 +66,8 @@ export function AlertCenter({ token }: { token: string }) {
     <section className="alert-center">
       <div className="alert-center-header">
         <div>
-          <p className="eyebrow">NAB COMMAND POST</p>
-          <h2>Operational Alert Center</h2>
+          <p className="eyebrow">NAB MISSION CONTROL</p>
+          <h2>Flight Alert Center</h2>
           <p>Review and acknowledge current network and platform alerts.</p>
         </div>
         <button onClick={load}>{working ? "Refreshing…" : "Refresh"}</button>

@@ -1,4 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { apiRequest } from "./api";
+import { BRAND } from "./brand";
+import { FeatureHub } from "./featureHub";
+import "./styles.build005.css";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { IntegrationHealth } from "./integrations";
@@ -40,6 +44,44 @@ type SearchItem = {
   status: string;
 };
 
+type CustomerActivity = {
+  id: string;
+  kind: "note" | "ticket" | "workorder" | "device";
+  title: string;
+  detail: string;
+  status: string;
+  actor: string;
+  occurred_at: string;
+};
+
+type TaucAssignment = {
+  id: string;
+  client_id: string;
+  device_id: string;
+  serial_number: string;
+  mac_address?: string | null;
+  device_model?: string | null;
+  network_id?: string | null;
+  network_name?: string | null;
+  firmware_version?: string | null;
+  assigned_by: string;
+  created_at: string;
+};
+
+type TaucGatewaySnapshot = {
+  device_id: string;
+  network_id?: string | null;
+  network_name?: string | null;
+  status: "ready" | "partial";
+  device: Record<string, unknown>;
+  wifi: Record<string, unknown>;
+  wifi_networks: Record<string, unknown>[];
+  connected_devices: Record<string, unknown>[];
+  connected_devices_source: string;
+  connected_devices_endpoint_configured: boolean;
+  warnings: string[];
+};
+
 type Customer360 = {
   client_id: string;
   name: string;
@@ -64,6 +106,12 @@ type Customer360 = {
     network?: Record<string, unknown>;
   } | null;
   gateway_error?: string;
+  support?: {
+    tickets: Record<string, unknown>[];
+    workorders: Record<string, unknown>[];
+  };
+  activity?: CustomerActivity[];
+  tauc_devices?: TaucAssignment[];
 };
 
 type LiveSummary = {
@@ -74,34 +122,6 @@ type LiveSummary = {
   uisp: Record<string, unknown>;
   tauc: Record<string, unknown>;
 };
-
-const API = "/api/v2";
-
-async function apiRequest<T>(
-  path: string,
-  options: RequestInit = {},
-  token?: string
-): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
-
-  if (options.body) headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const response = await fetch(`${API}${path}`, {
-    ...options,
-    headers,
-    credentials: "include"
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || `Request failed: ${response.status}`);
-  }
-
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
-}
 
 function LoginPage({
   onLogin
@@ -136,8 +156,8 @@ function LoginPage({
       <section className="login-card">
         <div className="brand-mark"><img src="/nab-logo.svg" alt="North Alabama Broadband" /></div>
         <p className="eyebrow">NORTH ALABAMA BROADBAND</p>
-        <h1>NAB COMMAND POST</h1>
-        <p className="muted">Secure network operations access</p>
+        <h1>{BRAND.product}</h1>
+        <p className="muted">Secure access to the broadband flight deck</p>
 
         <form onSubmit={submit}>
           <label>
@@ -168,7 +188,7 @@ function LoginPage({
           </button>
         </form>
 
-        <small>Built for North Alabama. Connected for What’s Next.</small>
+        <small>{BRAND.tagline}</small>
       </section>
     </main>
   );
@@ -255,17 +275,191 @@ function CustomerView({
 }) {
   const [data, setData] = useState<Customer360 | null>(null);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionBusy, setActionBusy] = useState("");
+  const [ticketSubject, setTicketSubject] = useState("");
+  const [workTitle, setWorkTitle] = useState("");
+  const [ssid, setSsid] = useState("");
+  const [wifiPassword, setWifiPassword] = useState("");
+  const [noteBody, setNoteBody] = useState("");
+  const [taucSerial, setTaucSerial] = useState("");
+  const [taucMac, setTaucMac] = useState("");
+  const [taucSnapshot, setTaucSnapshot] = useState<TaucGatewaySnapshot | null>(null);
+  const [taucSnapshotError, setTaucSnapshotError] = useState("");
+  const [taucSnapshotBusy, setTaucSnapshotBusy] = useState(false);
+  const [taucRefreshKey, setTaucRefreshKey] = useState(0);
+  const gatewayDevice = data?.gateway?.device;
+  const gatewayNetwork = data?.gateway?.network;
+  const gatewayDeviceId = String(
+    gatewayDevice?.deviceId || gatewayDevice?.id || gatewayDevice?.device_id || ""
+  );
+  const gatewayNetworkId = String(
+    gatewayNetwork?.networkId || gatewayNetwork?.network_id || gatewayNetwork?.id || ""
+  );
+  const gatewayNetworkName = String(
+    gatewayNetwork?.networkName || gatewayNetwork?.network_name || gatewayNetwork?.name || ""
+  );
+  const gatewaySerialNumber = String(
+    gatewayDevice?.sn || gatewayDevice?.serialNumber || gatewayDevice?.serial_number || ""
+  );
+  const gatewayMacAddress = String(
+    gatewayDevice?.mac || gatewayDevice?.macAddress || gatewayDevice?.mac_address || ""
+  );
 
   useEffect(() => {
     setData(null);
     setError("");
 
-    apiRequest<Customer360>(`/customer360/${clientId}`, {}, token)
+    apiRequest<Customer360>(`/platform/customers/${clientId}/workspace`, {}, token)
       .then(setData)
       .catch((caught) =>
         setError(caught instanceof Error ? caught.message : "Unable to load customer")
       );
   }, [clientId, token]);
+
+  useEffect(() => {
+    if (!gatewayDeviceId) {
+      setTaucSnapshot(null);
+      setTaucSnapshotError("");
+      return;
+    }
+    let active = true;
+    setTaucSnapshotBusy(true);
+    setTaucSnapshotError("");
+    const snapshotParameters = new URLSearchParams();
+    if (gatewayNetworkId) snapshotParameters.set("network_id", gatewayNetworkId);
+    if (gatewayNetworkName) snapshotParameters.set("network_name", gatewayNetworkName);
+    if (gatewaySerialNumber) snapshotParameters.set("serial_number", gatewaySerialNumber);
+    if (gatewayMacAddress) snapshotParameters.set("mac_address", gatewayMacAddress);
+    const snapshotQuery = snapshotParameters.toString();
+    apiRequest<TaucGatewaySnapshot>(
+      `/tauc/devices/${encodeURIComponent(gatewayDeviceId)}/snapshot${snapshotQuery ? `?${snapshotQuery}` : ""}`,
+      {},
+      token
+    )
+      .then(snapshot => {
+        if (active) setTaucSnapshot(snapshot);
+      })
+      .catch(caught => {
+        if (active) {
+          setTaucSnapshotError(
+            caught instanceof Error ? caught.message : "Unable to load live TAUC data"
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setTaucSnapshotBusy(false);
+      });
+    return () => { active = false; };
+  }, [
+    gatewayDeviceId,
+    gatewayNetworkId,
+    gatewayNetworkName,
+    gatewaySerialNumber,
+    gatewayMacAddress,
+    token,
+    taucRefreshKey
+  ]);
+
+
+  const runAction = async (label: string, path: string, body: Record<string, unknown> = {}) => {
+    setActionBusy(label); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(path, { method: "POST", body: JSON.stringify(body) }, token);
+      setActionMessage(`${label} completed successfully.`);
+      if (label === "Support ticket") setTicketSubject("");
+      if (label === "Field work order") setWorkTitle("");
+      const refreshed = await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      );
+      setData(refreshed);
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : `${label} failed`);
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const addNote = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const body = noteBody.trim();
+    if (!body) return;
+    setActionBusy("Account note"); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(
+        `/platform/customers/${clientId}/notes`,
+        { method: "POST", body: JSON.stringify({ body }) },
+        token
+      );
+      setNoteBody("");
+      setData(await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      ));
+      setActionMessage("Account note added to the customer timeline.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to add account note");
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const assignTaucDevice = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setActionBusy("TAUC assignment"); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(
+        `/customers/${clientId}/gateway/resolve`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            client_id: clientId,
+            serial_number: taucSerial.trim(),
+            mac_address: taucMac.trim()
+          })
+        },
+        token
+      );
+      setTaucSerial("");
+      setTaucMac("");
+      setData(await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      ));
+      setActionMessage("TAUC device assigned to this customer.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to assign TAUC device");
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const removeTaucDevice = async (assignment: TaucAssignment) => {
+    if (!window.confirm(`Remove TAUC device ${assignment.serial_number} from this customer?`)) return;
+    setActionBusy(`Remove ${assignment.id}`); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(
+        `/customers/${clientId}/gateways/${assignment.id}`,
+        { method: "DELETE" },
+        token
+      );
+      setData(await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      ));
+      setActionMessage("TAUC device removed from this customer.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to remove TAUC device");
+    } finally {
+      setActionBusy("");
+    }
+  };
 
   if (error) {
     return (
@@ -286,6 +480,7 @@ function CustomerView({
 
   const device = data.gateway?.device || {};
   const network = data.gateway?.network || {};
+  const deviceId = gatewayDeviceId;
 
   return (
     <section className="customer360-shell">
@@ -325,6 +520,62 @@ function CustomerView({
         />
       </div>
 
+      <section className="customer-action-center">
+        <div className="panel-heading"><div><p className="eyebrow">CUSTOMER ACTION CENTER</p><h3>Resolve service from one workspace</h3></div></div>
+        {actionError && <div className="error-message">{actionError}</div>}
+        {actionMessage && <div className="dispatch-message">{actionMessage}</div>}
+        <div className="customer-action-grid">
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Support ticket", "/tickets", { client_id: data.client_id, subject: ticketSubject, description: `Opened from Customer 360 for ${data.name}`, priority: "high" }); }}>
+            <h4>Open support ticket</h4>
+            <input required minLength={3} value={ticketSubject} onChange={event => setTicketSubject(event.target.value)} placeholder="Issue summary" />
+            <button disabled={Boolean(actionBusy)}>{actionBusy === "Support ticket" ? "Opening…" : "Open ticket"}</button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Field work order", "/workorders", { client_id: data.client_id, title: workTitle, description: `Dispatched from Customer 360 for ${data.name}`, priority: "high", service_address: data.address || null }); }}>
+            <h4>Dispatch field work</h4>
+            <input required minLength={3} value={workTitle} onChange={event => setWorkTitle(event.target.value)} placeholder="Work required" />
+            <button disabled={Boolean(actionBusy)}>{actionBusy === "Field work order" ? "Dispatching…" : "Create work order"}</button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Wi-Fi name update", "/tauc/controls/wifi/ssid", { device_id: deviceId, value: ssid }); }}>
+            <h4>Update Wi-Fi name</h4>
+            <input required disabled={!deviceId} value={ssid} onChange={event => setSsid(event.target.value)} placeholder={deviceId ? "New SSID" : "Gateway ID unavailable"} />
+            <button disabled={Boolean(actionBusy) || !deviceId}>Apply SSID</button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Wi-Fi password update", "/tauc/controls/wifi/password", { device_id: deviceId, value: wifiPassword }); }}>
+            <h4>Update Wi-Fi password</h4>
+            <input required minLength={8} type="password" disabled={!deviceId} value={wifiPassword} onChange={event => setWifiPassword(event.target.value)} placeholder={deviceId ? "New password" : "Gateway ID unavailable"} />
+            <button disabled={Boolean(actionBusy) || !deviceId}>Apply password</button>
+          </form>
+          <div className="gateway-actions">
+            <h4>Gateway maintenance</h4>
+            <button disabled={Boolean(actionBusy) || !deviceId || taucSnapshotBusy} onClick={() => setTaucRefreshKey(value => value + 1)}>{taucSnapshotBusy ? "Reading TAUC…" : "Refresh diagnostics"}</button>
+            <button className="danger-action" disabled={Boolean(actionBusy) || !deviceId} onClick={() => { if (window.confirm("Reboot this customer gateway now?")) runAction("Gateway reboot", "/tauc/controls/reboot", { device_id: deviceId }); }}>Reboot gateway</button>
+          </div>
+        </div>
+        <p className="muted">TAUC write actions remain permission-checked and configuration-gated by verified tenant endpoint paths.</p>
+      </section>
+
+      <section className="customer-timeline panel">
+        <div className="panel-heading">
+          <div><p className="eyebrow">ACCOUNT HISTORY</p><h3>Customer activity timeline</h3></div>
+          <span>{data.activity?.length ?? 0} events</span>
+        </div>
+        <form className="timeline-note-form" onSubmit={addNote}>
+          <textarea required maxLength={2000} value={noteBody} onChange={event => setNoteBody(event.target.value)} placeholder="Add an internal account note visible to portal staff…" />
+          <button disabled={Boolean(actionBusy)}>{actionBusy === "Account note" ? "Saving…" : "Add note"}</button>
+        </form>
+        <div className="timeline-list">
+          {(data.activity || []).map(item => <article className={`timeline-item ${item.kind}`} key={`${item.kind}-${item.id}`}>
+            <span className="timeline-marker" aria-hidden="true" />
+            <div>
+              <header><strong>{item.title}</strong><time dateTime={item.occurred_at}>{new Date(item.occurred_at).toLocaleString()}</time></header>
+              <p>{item.detail}</p>
+              <footer>{item.actor || "System"}{item.status ? ` · ${item.status.replaceAll("_", " ")}` : ""}</footer>
+            </div>
+          </article>)}
+          {!data.activity?.length && <p className="muted">No account activity has been recorded yet.</p>}
+        </div>
+      </section>
+
       <div className="dashboard-grid">
         <article className="panel large">
           <div className="panel-heading">
@@ -346,9 +597,49 @@ function CustomerView({
         <article className="panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">TAUC GATEWAY</p>
-              <h3>Gateway identity</h3>
+              <p className="eyebrow">TAUC DEVICES</p>
+              <h3>Customer assignments</h3>
             </div>
+            <span>{data.tauc_devices?.length ?? 0} assigned</span>
+          </div>
+          <form className="tauc-assignment-form" onSubmit={assignTaucDevice}>
+            <input
+              required
+              minLength={4}
+              maxLength={128}
+              value={taucSerial}
+              onChange={event => setTaucSerial(event.target.value)}
+              placeholder="TAUC serial number"
+            />
+            <input
+              required
+              maxLength={32}
+              value={taucMac}
+              onChange={event => setTaucMac(event.target.value)}
+              placeholder="Device MAC address"
+            />
+            <button disabled={Boolean(actionBusy)}>
+              {actionBusy === "TAUC assignment" ? "Verifying…" : "Verify and assign"}
+            </button>
+          </form>
+          <div className="tauc-assignment-list">
+            {(data.tauc_devices || []).map(assignment => (
+              <div className="tauc-assignment" key={assignment.id}>
+                <div>
+                  <strong>{assignment.device_model || "TAUC gateway"}</strong>
+                  <span>SN {assignment.serial_number} · {assignment.mac_address || "MAC unavailable"}</span>
+                  <small>{assignment.network_name || assignment.network_id || "Network unavailable"}</small>
+                </div>
+                <button
+                  type="button"
+                  className="danger-action"
+                  disabled={Boolean(actionBusy)}
+                  onClick={() => removeTaucDevice(assignment)}
+                >
+                  {actionBusy === `Remove ${assignment.id}` ? "Removing…" : "Remove"}
+                </button>
+              </div>
+            ))}
           </div>
           {data.gateway ? (
             <div className="readiness-list">
@@ -356,11 +647,66 @@ function CustomerView({
               <div><span>Serial</span><strong>{String(device.sn || "Unavailable")}</strong></div>
               <div><span>MAC</span><strong>{String(device.mac || "Unavailable")}</strong></div>
               <div><span>Firmware</span><strong>{String(device.fwVersion || "Unavailable")}</strong></div>
-              <div><span>Network</span><strong>{String(network.networkName || network.id || "Unavailable")}</strong></div>
+              <div><span>Network</span><strong>{String(network.networkName || network.networkId || network.id || "Unavailable")}</strong></div>
             </div>
           ) : (
             <p className="muted">{data.gateway_error || "No TAUC gateway resolved."}</p>
           )}
+          <section className="tauc-live-snapshot">
+            <header>
+              <div>
+                <p className="eyebrow">LIVE TAUC DATA</p>
+                <h4>Wi-Fi and connected devices</h4>
+              </div>
+              <button
+                type="button"
+                disabled={!deviceId || taucSnapshotBusy}
+                onClick={() => setTaucRefreshKey(value => value + 1)}
+              >
+                {taucSnapshotBusy ? "Reading…" : "Refresh"}
+              </button>
+            </header>
+            {taucSnapshotError && <div className="error-message">{taucSnapshotError}</div>}
+            {taucSnapshot?.warnings.map(warning => (
+              <p className="tauc-warning" key={warning}>{warning}</p>
+            ))}
+            {taucSnapshot && (
+              <>
+                <div className="tauc-live-metrics">
+                  <div><span>Snapshot</span><strong>{taucSnapshot.status}</strong></div>
+                  <div><span>Wi-Fi networks</span><strong>{taucSnapshot.wifi_networks.length}</strong></div>
+                  <div><span>Connected devices</span><strong>{taucSnapshot.connected_devices.length}</strong></div>
+                </div>
+                <div className="tauc-live-grid">
+                  <div>
+                    <h5>Wi-Fi networks</h5>
+                    {taucSnapshot.wifi_networks.map((row, index) => (
+                      <article key={String(row.id || row.ssid || index)}>
+                        <strong>{String(row.ssid || row.ssidName || row.name || row.wifiName || "Wi-Fi network")}</strong>
+                        <span>{String(row.band || row.frequency || row.radio || "Band unavailable")}</span>
+                        <small>{String(row.enabled ?? row.status ?? "Available")}</small>
+                      </article>
+                    ))}
+                    {!taucSnapshot.wifi_networks.length && <p className="muted">No Wi-Fi networks were returned by TAUC.</p>}
+                  </div>
+                  <div>
+                    <h5>Connected devices</h5>
+                    {taucSnapshot.connected_devices.map((row, index) => (
+                      <article key={String(row.id || row.mac || row.macAddress || index)}>
+                        <strong>{String(row.name || row.hostName || row.hostname || row.alias || row.mac || "Connected device")}</strong>
+                        <span>{String(row.ip || row.ipAddress || row.macAddress || row.mac || "Address unavailable")}</span>
+                        <small>{String(row.signal || row.rssi || row.status || "Connected")}</small>
+                      </article>
+                    ))}
+                    {!taucSnapshot.connected_devices.length && <p className="muted">No connected devices were returned by TAUC.</p>}
+                  </div>
+                </div>
+              </>
+            )}
+            {!taucSnapshot && !taucSnapshotBusy && !taucSnapshotError && (
+              <p className="muted">Assign a TAUC gateway to load live Wi-Fi data.</p>
+            )}
+          </section>
         </article>
 
         <article className="panel">
@@ -374,6 +720,8 @@ function CustomerView({
             <div><span>Payments</span><strong>{data.billing.payments.length}</strong></div>
             <div><span>Invoices</span><strong>{data.billing.invoices.length}</strong></div>
             <div><span>Last payment</span><strong>{describePayment(data.billing.last_payment)}</strong></div>
+            <div><span>Support tickets</span><strong>{data.support?.tickets.length ?? 0}</strong></div>
+            <div><span>Work orders</span><strong>{data.support?.workorders.length ?? 0}</strong></div>
           </div>
         </article>
       </div>
@@ -393,7 +741,7 @@ function Dashboard({
   const [summary, setSummary] = useState<LiveSummary | null>(null);
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activePage, setActivePage] = useState("Command Post");
+  const [activePage, setActivePage] = useState("Mission Control");
   const [liveState, setLiveState] = useState("Connecting");
 
   useEffect(() => {
@@ -436,28 +784,32 @@ function Dashboard({
         <div className="sidebar-brand">
           <div className="brand-mark small"><img src="/nab-logo.svg" alt="North Alabama Broadband" /></div>
           <div>
-            <strong>COMMAND POST</strong>
-            <span>Portal v2</span>
+            <strong>MISSION CONTROL</strong>
+            <span>Rocket City Operations</span>
           </div>
         </div>
 
         <nav>
           {[
-            ["⌂", "Command Post"],
+            ["⌂", "Mission Control"],
+            ["◆", "Incident Command"],
             ["◉", "Customers"],
-            ["⌁", "Managed WiFi"],
+            ["⌁", "Managed Wi-Fi"],
             ["⌘", "Network"],
+            ["⌬", "Network Telemetry"],
             ["⌇", "Fiber"],
             ["⌖", "Fiber Map"],
             ["!", "Outages"],
-            ["⚠", "Alerts"],
-            ["⚒", "Field Operations"],
+            ["⚠", "Flight Alerts"],
+            ["⚒", "Ground Crew"],
             ["$", "Billing"],
-            ["▣", "Inventory"],
-            ["↗", "Analytics"],
+            ["▣", "Operations Suite"],
+            ["↗", "Mission Reports"],
             ["✓", "Audit"],
-            ["⇄", "Integrations"],
-            ["⚙", "Settings"]
+            ["⇄", "Systems Check"],
+            ["◎", "Subscriber Portal"],
+            ["≡", "Capability Parity"],
+            ["⚙", "Access Control"]
           ].map(([icon, label]) => (
             <button
               key={label}
@@ -497,8 +849,8 @@ function Dashboard({
             ☰
           </button>
           <div>
-            <p className="eyebrow">NETWORK OPERATIONS</p>
-            <h1>NAB COMMAND POST</h1>
+            <p className="eyebrow">BROADBAND FLIGHT OPERATIONS</p>
+            <h1>{BRAND.product}</h1>
           </div>
           <div className="topbar-actions">
             <span className="live-chip"><i /> {liveState}</span>
@@ -515,27 +867,45 @@ function Dashboard({
               setActivePage("Customers");
             }}
           />
+        ) : activePage === "Incident Command" ? (
+          <FeatureHub token={token} mode="incidents" />
         ) : activePage === "Fiber Map" ? (
           <FiberMap token={token} />
         ) : activePage === "Fiber" ? (
           <FiberOperations token={token} />
-        ) : activePage === "Integrations" ? (
+        ) : activePage === "Systems Check" ? (
           <IntegrationHealth token={token} />
         ) : activePage === "Network" ? (
           <NetworkOperationsCenter token={token} />
+        ) : activePage === "Network Telemetry" ? (
+          <FeatureHub token={token} mode="network" />
         ) : activePage === "Billing" ? (
           <BillingCenter token={token} />
-        ) : activePage === "Alerts" ? (
+        ) : activePage === "Flight Alerts" ? (
           <AlertCenter token={token} />
         ) : activePage === "Audit" ? (
           <AuditCenter token={token} />
-        ) : activePage === "Field Operations" || activePage === "Inventory" ? (
+        ) : activePage === "Ground Crew" ? (
+          <FeatureHub token={token} mode="field" />
+        ) : activePage === "Operations Suite" ? (
           <OperationsWorkspace token={token} />
-        ) : activePage !== "Command Post" && activePage !== "Customers" ? (
+        ) : activePage === "Outages" ? (
+          <FeatureHub token={token} mode="outages" />
+        ) : activePage === "Mission Reports" ? (
+          <FeatureHub token={token} mode="reports" />
+        ) : activePage === "Managed Wi-Fi" ? (
+          <FeatureHub token={token} mode="wifi" />
+        ) : activePage === "Subscriber Portal" ? (
+          <FeatureHub token={token} mode="portal" />
+        ) : activePage === "Capability Parity" ? (
+          <FeatureHub token={token} mode="parity" />
+        ) : activePage === "Access Control" ? (
+          <FeatureHub token={token} mode="admin" />
+        ) : activePage !== "Mission Control" && activePage !== "Customers" ? (
           <section className="panel">
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">NAB COMMAND POST</p>
+                <p className="eyebrow">NAB MISSION CONTROL</p>
                 <h3>{activePage}</h3>
               </div>
             </div>
@@ -548,15 +918,15 @@ function Dashboard({
           <>
             <section className="hero-panel">
               <div>
-                <p className="eyebrow">LIVE OPERATIONS</p>
-                <h2>North Alabama Broadband Network</h2>
-                <p>UISP, TAUC, Customer 360, and live Command Post data are integrated.</p>
+                <p className="eyebrow">LIVE TELEMETRY</p>
+                <h2>North Alabama Broadband Flight Deck</h2>
+                <p>UISP, TAUC, Customer 360, and live telemetry are integrated.</p>
               </div>
               <span className="live-chip"><i /> {summary?.status || "Operational"}</span>
             </section>
 
             <section className="metrics">
-              <Metric label="Network status" value={summary?.status || "Operational"} detail="Live integration health" />
+              <Metric label="Network status" value={summary?.status || "Operational"} detail="Live systems readiness" />
               <Metric label="Active outages" value={String(summary?.active_outages ?? 0)} detail="Customer-impacting events" />
               <Metric label="Customers affected" value={String(summary?.customers_affected ?? 0)} detail="Current impact" />
               <Metric label="Open tickets" value={String(summary?.open_tickets ?? 0)} detail="Support workload" />
