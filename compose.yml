@@ -1,0 +1,48 @@
+services:
+  api:
+    build:
+      context: ./backend
+    container_name: nab-v2-api
+    env_file:
+      - .env
+    ports:
+      - "8200:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: nab-v2-postgres
+    environment:
+      POSTGRES_DB: nab_portal
+      POSTGRES_USER: nab_portal
+      POSTGRES_PASSWORD: nab_portal
+    volumes:
+      - nab_v2_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nab_portal -d nab_portal"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: nab-v2-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - nab_v2_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  nab_v2_postgres:
+  nab_v2_redis:

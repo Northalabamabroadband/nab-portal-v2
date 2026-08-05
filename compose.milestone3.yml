@@ -1,0 +1,11 @@
+services:
+  web:
+    build:
+      context: ./frontend
+    container_name: nab-v2-web
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "8300:80"
+    restart: unless-stopped

@@ -1,0 +1,4 @@
+services:
+  api:
+    volumes:
+      - ./secrets/tauc:/run/secrets/tauc:ro

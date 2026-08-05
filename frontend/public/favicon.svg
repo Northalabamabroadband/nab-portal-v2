@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+<title id="title">North Alabama Broadband</title><desc id="desc">NAB mountain and broadband signal mark</desc>
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0ea5e9"/><stop offset="1" stop-color="#2563eb"/></linearGradient><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#020617" flood-opacity=".42"/></filter></defs>
+<rect x="28" y="28" width="456" height="456" rx="108" fill="#071727" stroke="#38bdf8" stroke-opacity=".32" stroke-width="8" filter="url(#s)"/>
+<path d="M84 350 192 193l63 82 51-65 122 140H84Z" fill="url(#g)" opacity=".98"/>
+<path d="M85 350h342" stroke="#7dd3fc" stroke-width="14" stroke-linecap="round"/>
+<circle cx="256" cy="133" r="15" fill="#e0f2fe"/>
+<path d="M208 154a68 68 0 0 1 96 0M181 127a106 106 0 0 1 150 0M154 100a144 144 0 0 1 204 0" fill="none" stroke="#38bdf8" stroke-width="13" stroke-linecap="round"/>
+<path d="M146 385h220" stroke="#0ea5e9" stroke-width="8" stroke-linecap="round" opacity=".7"/>
+<text x="256" y="431" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="48" font-weight="900" letter-spacing="8" fill="#f8fafc">NAB</text>
+</svg>
