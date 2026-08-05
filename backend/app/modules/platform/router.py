@@ -314,7 +314,7 @@ async def customer_workspace(
         "workorders": [{"id": x.id, "title": x.title, "status": x.status, "scheduled_for": x.scheduled_for} for x in orders],
     }
     customer["tauc_devices"] = [assignment.as_dict() for assignment in assignments]
-    if assignments and not customer.get("gateway"):
+    if assignments:
         primary = assignments[0]
         customer["gateway"] = {
             "source": "customer_assignment",
