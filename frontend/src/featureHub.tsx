@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { request as load } from "./api";
 
-type Mode = "incidents" | "outages" | "network" | "field" | "reports" | "portal" | "admin" | "wifi";
+type Mode = "parity" | "incidents" | "outages" | "network" | "field" | "reports" | "portal" | "admin" | "wifi";
 type Json = Record<string, any>;
 
 const endpoint: Record<Mode, string> = {
+  parity: "/platform/parity",
   incidents: "/platform/incidents/command",
   outages: "/platform/outages",
   network: "/platform/network-intelligence",
@@ -16,6 +17,7 @@ const endpoint: Record<Mode, string> = {
 };
 
 const title: Record<Mode, string> = {
+  parity: "Capability Parity",
   incidents: "Incident Command",
   outages: "Outage Intelligence",
   network: "Network Topology & Performance",
@@ -85,11 +87,24 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
 
   return <section className="feature-hub">
     <header>
-      <div><p className="eyebrow">RC1 BUILD 008</p><h2>{title[mode]}</h2></div>
+      <div><p className="eyebrow">RC1 BUILD 009</p><h2>{title[mode]}</h2></div>
       <button onClick={refresh}>{working ? "Refreshing…" : "Refresh"}</button>
     </header>
     {error && <div className="error-message">{error}</div>}
     {actionMessage && <div className="dispatch-message">{actionMessage}</div>}
+    {data && mode === "parity" && <>
+      <div className="feature-metrics">
+        <Value label="Capability domains" value={data.total_domains} />
+        <Value label="Interactive domains" value={data.interactive_domains} />
+        <Value label="Release" value={data.release} />
+      </div>
+      <article className="feature-detail"><h3>Verification basis</h3><p>{data.basis}</p></article>
+      <div className="parity-table">
+        <div className="parity-row parity-heading"><strong>Domain</strong><strong>Read</strong><strong>Write</strong><strong>Source</strong></div>
+        {(data.capabilities || []).map((row: Json) => <div className="parity-row" key={row.domain}><strong>{row.domain}</strong><span>{String(row.read)}</span><span>{String(row.write)}</span><small>{row.source}</small></div>)}
+      </div>
+      <article className="feature-detail"><h3>Externally controlled operations</h3><ul>{(data.external_controls || []).map((row: string) => <li key={row}>{row}</li>)}</ul></article>
+    </>}
     {data && mode === "incidents" && <>
       <div className="incident-state">
         <span>Mission state</span>
