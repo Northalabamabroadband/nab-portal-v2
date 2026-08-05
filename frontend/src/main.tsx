@@ -66,6 +66,10 @@ type Customer360 = {
     network?: Record<string, unknown>;
   } | null;
   gateway_error?: string;
+  support?: {
+    tickets: Record<string, unknown>[];
+    workorders: Record<string, unknown>[];
+  };
 };
 
 type LiveSummary = {
@@ -262,7 +266,7 @@ function CustomerView({
     setData(null);
     setError("");
 
-    apiRequest<Customer360>(`/customer360/${clientId}`, {}, token)
+    apiRequest<Customer360>(`/platform/customers/${clientId}/workspace`, {}, token)
       .then(setData)
       .catch((caught) =>
         setError(caught instanceof Error ? caught.message : "Unable to load customer")
@@ -376,6 +380,8 @@ function CustomerView({
             <div><span>Payments</span><strong>{data.billing.payments.length}</strong></div>
             <div><span>Invoices</span><strong>{data.billing.invoices.length}</strong></div>
             <div><span>Last payment</span><strong>{describePayment(data.billing.last_payment)}</strong></div>
+            <div><span>Support tickets</span><strong>{data.support?.tickets.length ?? 0}</strong></div>
+            <div><span>Work orders</span><strong>{data.support?.workorders.length ?? 0}</strong></div>
           </div>
         </article>
       </div>
