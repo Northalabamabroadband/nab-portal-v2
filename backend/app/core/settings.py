@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     tauc_device_lookup_path: str = "/v1/openapi/device-information/device-id"
     tauc_network_lookup_path: str = "/v1/openapi/device-information/device-info"
     tauc_network_id_lookup_path: str = "/v1/openapi/network-system-management/id"
+    tauc_network_list_path: str = "/v1/openapi/network-system-management/network-name-list"
     tauc_wifi_ssid_update_path: str = ""
     tauc_wifi_password_update_path: str = ""
     tauc_reboot_path: str = ""
