@@ -30,7 +30,7 @@ type RouterSnapshot = {
     interfaces_running: number;
     dhcp_leases: number;
     dhcp_bound: number;
-    connected_clients: number;
+    observed_hosts: number;
     routes: number;
   };
   interfaces: Record<string, unknown>[];
@@ -38,7 +38,7 @@ type RouterSnapshot = {
   routes: Record<string, unknown>[];
   dhcp_leases: Record<string, unknown>[];
   arp: Record<string, unknown>[];
-  connected_clients: Record<string, unknown>[];
+  network_neighbors: Record<string, unknown>[];
   warnings: string[];
 };
 
@@ -119,11 +119,12 @@ export function MikroTikOperations({ token }: { token: string }) {
     <section className="mikrotik-center">
       <header className="mikrotik-header">
         <div>
-          <p className="eyebrow">ROUTER FLIGHT SYSTEMS · RC1 BUILD 025</p>
-          <h2>MikroTik RouterOS</h2>
+          <p className="eyebrow">NETWORK INFRASTRUCTURE · NOC ONLY · RC1 BUILD 025</p>
+          <h2>MikroTik RouterOS Infrastructure</h2>
           <p>
-            Read-only router health, interfaces, addressing, routes, DHCP leases,
-            and connected-client telemetry.
+            Internal core, tower, POP, and backhaul-edge router health. This
+            module is isolated from Customer 360, subscriber Wi-Fi, and customer
+            equipment assignments.
           </p>
         </div>
         <div className="mikrotik-header-actions">
@@ -148,10 +149,11 @@ export function MikroTikOperations({ token }: { token: string }) {
       {status && !status.configured && (
         <article className="mikrotik-setup">
           <p className="eyebrow">SECURE ACTIVATION</p>
-          <h3>Connect the portal to a RouterOS v7 router</h3>
+          <h3>Connect the NOC to a RouterOS v7 infrastructure router</h3>
           <p>
             Add the variables below to the deployed server&apos;s private .env file.
-            Use a dedicated RouterOS account limited to read and REST API access.
+            Use a dedicated infrastructure-monitoring account limited to read and
+            REST API access. This does not assign routers to customer records.
           </p>
           <code>
             MIKROTIK_BASE_URL · MIKROTIK_USERNAME · MIKROTIK_PASSWORD
@@ -220,8 +222,8 @@ export function MikroTikOperations({ token }: { token: string }) {
               detail="Running / total"
             />
             <Stat
-              label="Connected clients"
-              value={String(snapshot.summary.connected_clients)}
+              label="Observed hosts"
+              value={String(snapshot.summary.observed_hosts)}
               detail={
                 snapshot.summary.dhcp_bound +
                 " bound DHCP leases"
@@ -299,13 +301,13 @@ export function MikroTikOperations({ token }: { token: string }) {
             <article className="mikrotik-panel">
               <div className="mikrotik-panel-heading">
                 <div>
-                  <p className="eyebrow">LAN OCCUPANCY</p>
-                  <h3>Connected devices</h3>
+                  <p className="eyebrow">INFRASTRUCTURE ADJACENCY</p>
+                  <h3>Observed network hosts</h3>
                 </div>
-                <span>{snapshot.connected_clients.length} observed</span>
+                <span>{snapshot.network_neighbors.length} observed</span>
               </div>
               <div className="router-client-list">
-                {snapshot.connected_clients.map((row, index) => (
+                {snapshot.network_neighbors.map((row, index) => (
                   <div key={textValue(row.id, String(index))}>
                     <span className={
                       "client-beacon " +
@@ -323,9 +325,9 @@ export function MikroTikOperations({ token }: { token: string }) {
                     </div>
                   </div>
                 ))}
-                {!snapshot.connected_clients.length && (
+                {!snapshot.network_neighbors.length && (
                   <p className="muted">
-                    RouterOS returned no DHCP or ARP clients.
+                    RouterOS returned no DHCP or ARP network neighbors.
                   </p>
                 )}
               </div>
@@ -363,7 +365,8 @@ export function MikroTikOperations({ token }: { token: string }) {
           </div>
 
           <footer className="mikrotik-footnote">
-            <span>Read-only mode</span>
+            <span>Internal NOC only</span>
+            <span>Read-only · no customer assignments</span>
             <span>HTTP Basic credentials protected by TLS</span>
             <span>
               Last poll {new Date(snapshot.generated_at).toLocaleString()}
