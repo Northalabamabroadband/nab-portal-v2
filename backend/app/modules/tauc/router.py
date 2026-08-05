@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.modules.auth.dependencies import require_permission
 from app.modules.tauc.client import TAUCClient, TAUCError
-from app.modules.tauc.schemas import DeviceLookupRequest
+from app.modules.tauc.schemas import DeviceControlRequest, DeviceLookupRequest, WifiSettingRequest
 
 router = APIRouter(prefix="/tauc", tags=["tauc"])
 
@@ -66,3 +66,34 @@ async def network_lookup(
         ) from exc
 
     return {"network": result}
+
+
+async def _run_control(action):
+    try:
+        return {"result": await action}
+    except TAUCError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+@router.post("/controls/wifi/ssid")
+async def set_wifi_ssid(payload: WifiSettingRequest, claims: Annotated[dict, Depends(require_permission("wifi.write"))]) -> dict:
+    client = TAUCClient()
+    return await _run_control(client.set_wifi_ssid(payload.device_id, payload.value))
+
+
+@router.post("/controls/wifi/password")
+async def set_wifi_password(payload: WifiSettingRequest, claims: Annotated[dict, Depends(require_permission("wifi.write"))]) -> dict:
+    client = TAUCClient()
+    return await _run_control(client.set_wifi_password(payload.device_id, payload.value))
+
+
+@router.post("/controls/reboot")
+async def reboot_device(payload: DeviceControlRequest, claims: Annotated[dict, Depends(require_permission("wifi.write"))]) -> dict:
+    client = TAUCClient()
+    return await _run_control(client.reboot(payload.device_id))
+
+
+@router.post("/controls/diagnostics")
+async def run_diagnostics(payload: DeviceControlRequest, claims: Annotated[dict, Depends(require_permission("wifi.read"))]) -> dict:
+    client = TAUCClient()
+    return await _run_control(client.diagnostics(payload.device_id))
