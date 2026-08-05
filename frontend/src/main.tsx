@@ -116,8 +116,8 @@ function LoginPage({
       <section className="login-card">
         <div className="brand-mark"><img src="/nab-logo.svg" alt="North Alabama Broadband" /></div>
         <p className="eyebrow">NORTH ALABAMA BROADBAND</p>
-        <h1>NAB MISSION CONTROL</h1>
-        <p className="muted">Secure network operations access</p>
+        <h1>{BRAND.product}</h1>
+        <p className="muted">Secure access to the broadband flight deck</p>
 
         <form onSubmit={submit}>
           <label>
@@ -419,7 +419,7 @@ function Dashboard({
           <div className="brand-mark small"><img src="/nab-logo.svg" alt="North Alabama Broadband" /></div>
           <div>
             <strong>MISSION CONTROL</strong>
-            <span>Portal v2</span>
+            <span>Rocket City Operations</span>
           </div>
         </div>
 
@@ -427,21 +427,21 @@ function Dashboard({
           {[
             ["⌂", "Mission Control"],
             ["◉", "Customers"],
-            ["⌁", "Managed WiFi"],
+            ["⌁", "Managed Wi-Fi"],
             ["⌘", "Network"],
-            ["⌬", "Network Intelligence"],
+            ["⌬", "Network Telemetry"],
             ["⌇", "Fiber"],
             ["⌖", "Fiber Map"],
             ["!", "Outages"],
-            ["⚠", "Alerts"],
-            ["⚒", "Field Operations"],
+            ["⚠", "Flight Alerts"],
+            ["⚒", "Ground Crew"],
             ["$", "Billing"],
-            ["▣", "Inventory"],
-            ["↗", "Analytics"],
+            ["▣", "Payload Inventory"],
+            ["↗", "Mission Reports"],
             ["✓", "Audit"],
-            ["⇄", "Integrations"],
-            ["◎", "Customer Portal"],
-            ["⚙", "Settings"]
+            ["⇄", "Systems Check"],
+            ["◎", "Subscriber Portal"],
+            ["⚙", "Access Control"]
           ].map(([icon, label]) => (
             <button
               key={label}
@@ -482,7 +482,7 @@ function Dashboard({
           </button>
           <div>
             <p className="eyebrow">BROADBAND FLIGHT OPERATIONS</p>
-            <h1>NAB MISSION CONTROL</h1>
+            <h1>{BRAND.product}</h1>
           </div>
           <div className="topbar-actions">
             <span className="live-chip"><i /> {liveState}</span>
@@ -503,31 +503,31 @@ function Dashboard({
           <FiberMap token={token} />
         ) : activePage === "Fiber" ? (
           <FiberOperations token={token} />
-        ) : activePage === "Integrations" ? (
+        ) : activePage === "Systems Check" ? (
           <IntegrationHealth token={token} />
         ) : activePage === "Network" ? (
           <NetworkOperationsCenter token={token} />
-        ) : activePage === "Network Intelligence" ? (
+        ) : activePage === "Network Telemetry" ? (
           <FeatureHub token={token} mode="network" />
         ) : activePage === "Billing" ? (
           <BillingCenter token={token} />
-        ) : activePage === "Alerts" ? (
+        ) : activePage === "Flight Alerts" ? (
           <AlertCenter token={token} />
         ) : activePage === "Audit" ? (
           <AuditCenter token={token} />
-        ) : activePage === "Field Operations" ? (
+        ) : activePage === "Ground Crew" ? (
           <FeatureHub token={token} mode="field" />
-        ) : activePage === "Inventory" ? (
+        ) : activePage === "Payload Inventory" ? (
           <OperationsWorkspace token={token} />
         ) : activePage === "Outages" ? (
           <FeatureHub token={token} mode="outages" />
-        ) : activePage === "Analytics" ? (
+        ) : activePage === "Mission Reports" ? (
           <FeatureHub token={token} mode="reports" />
-        ) : activePage === "Managed WiFi" ? (
+        ) : activePage === "Managed Wi-Fi" ? (
           <FeatureHub token={token} mode="wifi" />
-        ) : activePage === "Customer Portal" ? (
+        ) : activePage === "Subscriber Portal" ? (
           <FeatureHub token={token} mode="portal" />
-        ) : activePage === "Settings" ? (
+        ) : activePage === "Access Control" ? (
           <FeatureHub token={token} mode="admin" />
         ) : activePage !== "Mission Control" && activePage !== "Customers" ? (
           <section className="panel">
@@ -546,15 +546,15 @@ function Dashboard({
           <>
             <section className="hero-panel">
               <div>
-                <p className="eyebrow">LIVE OPERATIONS</p>
-                <h2>North Alabama Broadband Network</h2>
+                <p className="eyebrow">LIVE TELEMETRY</p>
+                <h2>North Alabama Broadband Flight Deck</h2>
                 <p>UISP, TAUC, Customer 360, and live telemetry are integrated.</p>
               </div>
               <span className="live-chip"><i /> {summary?.status || "Operational"}</span>
             </section>
 
             <section className="metrics">
-              <Metric label="Network status" value={summary?.status || "Operational"} detail="Live integration health" />
+              <Metric label="Network status" value={summary?.status || "Operational"} detail="Live systems readiness" />
               <Metric label="Active outages" value={String(summary?.active_outages ?? 0)} detail="Customer-impacting events" />
               <Metric label="Customers affected" value={String(summary?.customers_affected ?? 0)} detail="Current impact" />
               <Metric label="Open tickets" value={String(summary?.open_tickets ?? 0)} detail="Support workload" />
