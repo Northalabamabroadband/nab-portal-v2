@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import database_session
 from app.models.observability import OperationalAlert
-from app.models.operations import InventoryItem, SupportTicket, WorkOrder
+from app.models.operations import CustomerNote, InventoryItem, SupportTicket, WorkOrder
 from app.modules.auth.dependencies import require_permission
 from app.modules.auth.service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
 from app.modules.customer360.service import customer_360
@@ -22,7 +23,11 @@ from app.modules.incidents.service import (
 )
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build009"])
+router = APIRouter(prefix="/platform", tags=["platform-build017"])
+
+
+class CustomerNoteCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
 
 
 
@@ -247,6 +252,30 @@ def operations_report(
     }
 
 
+@router.post("/customers/{client_id}/notes", status_code=201)
+def create_customer_note(
+    client_id: str,
+    payload: CustomerNoteCreate,
+    claims: Annotated[dict, Depends(require_permission("customers.write"))],
+    session: Annotated[Session, Depends(database_session)],
+) -> dict:
+    note = CustomerNote(
+        client_id=client_id,
+        body=payload.body.strip(),
+        author_email=str(claims.get("email") or claims.get("sub") or "unknown"),
+    )
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return {
+        "id": note.id,
+        "client_id": note.client_id,
+        "body": note.body,
+        "author_email": note.author_email,
+        "created_at": note.created_at,
+    }
+
+
 @router.get("/customers/{client_id}/workspace")
 async def customer_workspace(
     client_id: str,
@@ -266,10 +295,51 @@ async def customer_workspace(
         .order_by(WorkOrder.created_at.desc())
         .limit(100)
     ).all())
+    notes = list(session.scalars(
+        select(CustomerNote)
+        .where(CustomerNote.client_id == client_id)
+        .order_by(CustomerNote.created_at.desc())
+        .limit(100)
+    ).all())
     customer["support"] = {
         "tickets": [{"id": x.id, "subject": x.subject, "status": x.status, "priority": x.priority} for x in tickets],
         "workorders": [{"id": x.id, "title": x.title, "status": x.status, "scheduled_for": x.scheduled_for} for x in orders],
     }
+    activity = [
+        {
+            "id": x.id,
+            "kind": "note",
+            "title": "Internal account note",
+            "detail": x.body,
+            "status": "",
+            "actor": x.author_email,
+            "occurred_at": x.created_at,
+        }
+        for x in notes
+    ]
+    activity.extend({
+        "id": x.id,
+        "kind": "ticket",
+        "title": x.subject,
+        "detail": f"Support ticket · {x.priority} priority",
+        "status": x.status,
+        "actor": x.created_by,
+        "occurred_at": x.created_at,
+    } for x in tickets)
+    activity.extend({
+        "id": x.id,
+        "kind": "workorder",
+        "title": x.title,
+        "detail": x.service_address or "Field work order",
+        "status": x.status,
+        "actor": x.created_by,
+        "occurred_at": x.created_at,
+    } for x in orders)
+    customer["activity"] = sorted(
+        activity,
+        key=lambda item: item["occurred_at"],
+        reverse=True,
+    )[:200]
     return customer
 
 
@@ -310,7 +380,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build011",
+        "release": "2.0.0-rc1-build017",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -347,5 +417,6 @@ def admin_capabilities(
             "reporting": True,
             "role_administration": True,
             "access_control_center": "guarded",
+            "customer_activity_timeline": True,
         },
     }
