@@ -91,6 +91,9 @@ async def resolve_customer_gateway(
         )
         session.add(assignment)
 
+    assignment.tauc_device_id = device_id
+    assignment.serial_number = serial_number
+    assignment.mac_address = mac_address or None
     assignment.device_model = str(
         device.get("deviceModel") or device.get("model") or ""
     ) or None
