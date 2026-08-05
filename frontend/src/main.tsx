@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { apiRequest } from "./api";
+import { BRAND } from "./brand";
 import { FeatureHub } from "./featureHub";
 import "./styles.build005.css";
 import { createRoot } from "react-dom/client";
@@ -81,34 +83,6 @@ type LiveSummary = {
   tauc: Record<string, unknown>;
 };
 
-const API = "/api/v2";
-
-async function apiRequest<T>(
-  path: string,
-  options: RequestInit = {},
-  token?: string
-): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
-
-  if (options.body) headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const response = await fetch(`${API}${path}`, {
-    ...options,
-    headers,
-    credentials: "include"
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || `Request failed: ${response.status}`);
-  }
-
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
-}
-
 function LoginPage({
   onLogin
 }: {
@@ -142,7 +116,7 @@ function LoginPage({
       <section className="login-card">
         <div className="brand-mark"><img src="/nab-logo.svg" alt="North Alabama Broadband" /></div>
         <p className="eyebrow">NORTH ALABAMA BROADBAND</p>
-        <h1>NAB COMMAND POST</h1>
+        <h1>NAB MISSION CONTROL</h1>
         <p className="muted">Secure network operations access</p>
 
         <form onSubmit={submit}>
@@ -174,7 +148,7 @@ function LoginPage({
           </button>
         </form>
 
-        <small>Built for North Alabama. Connected for What’s Next.</small>
+        <small>{BRAND.tagline}</small>
       </section>
     </main>
   );
@@ -401,7 +375,7 @@ function Dashboard({
   const [summary, setSummary] = useState<LiveSummary | null>(null);
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activePage, setActivePage] = useState("Command Post");
+  const [activePage, setActivePage] = useState("Mission Control");
   const [liveState, setLiveState] = useState("Connecting");
 
   useEffect(() => {
@@ -444,14 +418,14 @@ function Dashboard({
         <div className="sidebar-brand">
           <div className="brand-mark small"><img src="/nab-logo.svg" alt="North Alabama Broadband" /></div>
           <div>
-            <strong>COMMAND POST</strong>
+            <strong>MISSION CONTROL</strong>
             <span>Portal v2</span>
           </div>
         </div>
 
         <nav>
           {[
-            ["⌂", "Command Post"],
+            ["⌂", "Mission Control"],
             ["◉", "Customers"],
             ["⌁", "Managed WiFi"],
             ["⌘", "Network"],
@@ -507,8 +481,8 @@ function Dashboard({
             ☰
           </button>
           <div>
-            <p className="eyebrow">NETWORK OPERATIONS</p>
-            <h1>NAB COMMAND POST</h1>
+            <p className="eyebrow">BROADBAND FLIGHT OPERATIONS</p>
+            <h1>NAB MISSION CONTROL</h1>
           </div>
           <div className="topbar-actions">
             <span className="live-chip"><i /> {liveState}</span>
@@ -555,11 +529,11 @@ function Dashboard({
           <FeatureHub token={token} mode="portal" />
         ) : activePage === "Settings" ? (
           <FeatureHub token={token} mode="admin" />
-        ) : activePage !== "Command Post" && activePage !== "Customers" ? (
+        ) : activePage !== "Mission Control" && activePage !== "Customers" ? (
           <section className="panel">
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">NAB COMMAND POST</p>
+                <p className="eyebrow">NAB MISSION CONTROL</p>
                 <h3>{activePage}</h3>
               </div>
             </div>
@@ -574,7 +548,7 @@ function Dashboard({
               <div>
                 <p className="eyebrow">LIVE OPERATIONS</p>
                 <h2>North Alabama Broadband Network</h2>
-                <p>UISP, TAUC, Customer 360, and live Command Post data are integrated.</p>
+                <p>UISP, TAUC, Customer 360, and live telemetry are integrated.</p>
               </div>
               <span className="live-chip"><i /> {summary?.status || "Operational"}</span>
             </section>
