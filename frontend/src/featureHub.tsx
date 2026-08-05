@@ -56,7 +56,6 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
 
   useEffect(() => { refresh(); }, [mode, token]);
 
-
   const dispatch = async (incidentId: string) => {
     setDispatching(incidentId);
     setActionMessage("");
@@ -68,10 +67,13 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
         { method: "POST" }
       );
       const created = (result.created || []).join(" and ");
+      const reopened = (result.reopened || []).join(" and ");
       setActionMessage(
         created
           ? `Dispatch created ${created}. Existing resources were reused automatically.`
-          : "Dispatch already exists. No duplicate records were created."
+          : reopened
+            ? `Dispatch reopened ${reopened} for the active incident.`
+            : "Dispatch already exists. No duplicate records were created."
       );
       await refresh();
     } catch (caught) {
