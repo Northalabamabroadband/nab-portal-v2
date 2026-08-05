@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { request } from "./api";
 
 type PointFeature = {
   id: string;
@@ -66,22 +67,6 @@ type Bounds = {
   maxLat: number;
 };
 
-async function request<T>(path: string, token: string): Promise<T> {
-  const response = await fetch(`/api/v2${path}`, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`
-    },
-    credentials: "include"
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || `Request failed: ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
-}
 
 function calculateBounds(
   assets: PointFeature[],
