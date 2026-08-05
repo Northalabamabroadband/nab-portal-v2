@@ -437,7 +437,7 @@ function Dashboard({
             ["⚠", "Flight Alerts"],
             ["⚒", "Ground Crew"],
             ["$", "Billing"],
-            ["▣", "Payload Inventory"],
+            ["▣", "Operations Suite"],
             ["↗", "Mission Reports"],
             ["✓", "Audit"],
             ["⇄", "Systems Check"],
@@ -520,7 +520,7 @@ function Dashboard({
           <AuditCenter token={token} />
         ) : activePage === "Ground Crew" ? (
           <FeatureHub token={token} mode="field" />
-        ) : activePage === "Payload Inventory" ? (
+        ) : activePage === "Operations Suite" ? (
           <OperationsWorkspace token={token} />
         ) : activePage === "Outages" ? (
           <FeatureHub token={token} mode="outages" />
