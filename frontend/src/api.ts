@@ -3,14 +3,14 @@ export async function request<T>(
   token: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const headers = new Headers(options.headers);
+  headers.set("Accept", "application/json");
+  if (options.body) headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
   const response = await fetch(`/api/v2${path}`, {
     ...options,
-    headers: {
-      Accept: "application/json",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {})
-    },
+    headers,
     credentials: "include"
   });
 
