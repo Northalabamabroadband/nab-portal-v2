@@ -9,10 +9,11 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import database_session
+from app.models.desktop import DesktopOutage
 from app.models.operations import WorkOrder
 
 
@@ -22,10 +23,6 @@ router = APIRouter(
 )
 
 
-# ============================================================
-# API KEY AUTHENTICATION
-# ============================================================
-
 def _configured_api_key() -> str:
     return os.getenv("NAB_DESKTOP_API_KEY", "").strip()
 
@@ -34,7 +31,6 @@ def require_desktop_api_key(
     x_nab_api_key: Annotated[str | None, Header()] = None,
 ) -> str:
     configured_key = _configured_api_key()
-
     if not configured_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -42,7 +38,6 @@ def require_desktop_api_key(
         )
 
     supplied_key = str(x_nab_api_key or "").strip()
-
     if not supplied_key or not hmac.compare_digest(
         supplied_key.encode("utf-8"),
         configured_key.encode("utf-8"),
@@ -55,25 +50,17 @@ def require_desktop_api_key(
     return hashlib.sha256(supplied_key.encode("utf-8")).hexdigest()
 
 
-# ============================================================
-# SCHEMAS
-# ============================================================
-
 class DesktopWorkOrderCreate(BaseModel):
-    work_order_number: str = Field(min_length=1, max_length=120)
+    work_order_number: str = Field(min_length=1, max_length=36)
     job_type: str = Field(default="service_call", max_length=80)
     title: str = Field(min_length=1, max_length=220)
     status: str = Field(default="open", max_length=32)
     priority: str = Field(default="normal", max_length=32)
-
     customer_name: str = Field(default="Customer", max_length=220)
     customer_phone: str = Field(default="", max_length=80)
-
     service_address: str = Field(default="", max_length=500)
-
     scheduled_start: int | None = None
     scheduled_end: int | None = None
-
     assigned_technician: str = Field(default="", max_length=320)
     description: str = ""
 
@@ -83,16 +70,13 @@ class DesktopOutageCreate(BaseModel):
     title: str = Field(min_length=1, max_length=220)
     status: str = Field(default="investigating", max_length=32)
     severity: str = Field(default="warning", max_length=32)
-
     affected_area: str = Field(default="", max_length=500)
     affected_services: str = Field(
         default="Internet service",
         max_length=500,
     )
-
     public_message: str = ""
     internal_notes: str = ""
-
     started_at: int | None = None
     published: bool = True
 
@@ -103,36 +87,19 @@ class DesktopOutageUpdate(BaseModel):
     published: bool | None = None
 
 
-# ============================================================
-# TEMPORARY OUTAGE STORAGE
-#
-# This keeps the first integration file self-contained.
-# We will replace this with a PostgreSQL model in the next file.
-# ============================================================
-
-_OUTAGES: dict[int, dict[str, Any]] = {}
-_OUTAGE_SEQUENCE = 0
-
-
 def _timestamp(value: datetime | None) -> int:
     if value is None:
         return int(time.time())
-
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-
     return int(value.timestamp())
 
 
 def _datetime_from_epoch(value: int | None) -> datetime | None:
     if value is None:
         return None
-
     try:
-        return datetime.fromtimestamp(
-            int(value),
-            tz=timezone.utc,
-        )
+        return datetime.fromtimestamp(int(value), tz=timezone.utc)
     except (TypeError, ValueError, OSError, OverflowError):
         return None
 
@@ -162,9 +129,33 @@ def _serialize_work_order(order: WorkOrder) -> dict[str, Any]:
     }
 
 
-# ============================================================
-# HEALTH
-# ============================================================
+def _serialize_outage(outage: DesktopOutage) -> dict[str, Any]:
+    return {
+        "id": outage.id,
+        "external_key": outage.external_key,
+        "title": outage.title,
+        "status": outage.status,
+        "severity": outage.severity,
+        "affected_area": outage.affected_area,
+        "affected_services": outage.affected_services,
+        "public_message": outage.public_message,
+        "internal_notes": outage.internal_notes,
+        "started_at": (
+            _timestamp(outage.started_at)
+            if outage.started_at
+            else None
+        ),
+        "published": outage.published,
+        "site_name": "",
+        "resolved_at": (
+            _timestamp(outage.resolved_at)
+            if outage.resolved_at
+            else None
+        ),
+        "created_at": _timestamp(outage.created_at),
+        "updated_at": _timestamp(outage.updated_at),
+    }
+
 
 @router.get("/health")
 def desktop_health(
@@ -173,16 +164,13 @@ def desktop_health(
     return {
         "status": "ok",
         "service": "nab-portal-desktop-sync",
-        "version": "1.0",
+        "version": "1.1",
         "server_time": int(time.time()),
         "authenticated": True,
         "key_fingerprint": api_key_hash[:12],
+        "outage_storage": "postgresql",
     }
 
-
-# ============================================================
-# SNAPSHOT
-# ============================================================
 
 @router.get("/snapshot")
 def desktop_snapshot(
@@ -192,63 +180,50 @@ def desktop_snapshot(
     event_after: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=500),
 ) -> dict[str, Any]:
-    statement = (
-        select(WorkOrder)
-        .order_by(WorkOrder.updated_at.asc())
-        .limit(limit)
+    updated_after = _datetime_from_epoch(since) if since else None
+
+    work_statement = select(WorkOrder).order_by(WorkOrder.updated_at.asc())
+    outage_statement = select(DesktopOutage).order_by(
+        DesktopOutage.updated_at.asc()
     )
+    if updated_after is not None:
+        work_statement = work_statement.where(
+            WorkOrder.updated_at > updated_after
+        )
+        outage_statement = outage_statement.where(
+            DesktopOutage.updated_at > updated_after
+        )
 
-    orders = list(session.scalars(statement).all())
-
-    if since:
-        orders = [
-            order
-            for order in orders
-            if _timestamp(order.updated_at) > since
-        ]
-
-    outage_rows = list(_OUTAGES.values())
-
-    if since:
-        outage_rows = [
-            outage
-            for outage in outage_rows
-            if int(outage.get("updated_at") or 0) > since
-        ]
+    orders = list(session.scalars(work_statement.limit(limit)).all())
+    outages = list(session.scalars(outage_statement.limit(limit)).all())
 
     open_work_orders = session.scalar(
-        select(WorkOrder)
+        select(func.count())
+        .select_from(WorkOrder)
         .where(
             WorkOrder.status.notin_(
                 ["completed", "cancelled", "closed"]
             )
         )
-        .count()
-    ) if False else sum(
-        1
-        for order in session.scalars(select(WorkOrder)).all()
-        if str(order.status).lower()
-        not in {"completed", "cancelled", "closed"}
-    )
-
-    active_outages = sum(
-        1
-        for outage in _OUTAGES.values()
-        if str(outage.get("status") or "").lower()
-        not in {"resolved", "closed"}
-    )
-
-    now = int(time.time())
+    ) or 0
+    active_outages = session.scalar(
+        select(func.count())
+        .select_from(DesktopOutage)
+        .where(DesktopOutage.status.notin_(["resolved", "closed"]))
+    ) or 0
 
     return {
-        "server_time": now,
+        "server_time": int(time.time()),
         "event_cursor": event_after,
         "technicians": [],
         "work_orders": [
             _serialize_work_order(order)
             for order in orders
         ],
-        "outages": outage_rows[:limit],
+        "outages": [
+            _serialize_outage(outage)
+            for outage in outages
+        ],
         "events": [],
         "summary": {
             "open_work_orders": open_work_orders,
@@ -259,10 +234,6 @@ def desktop_snapshot(
     }
 
 
-# ============================================================
-# WORK ORDERS
-# ============================================================
-
 @router.post("/work-orders")
 def desktop_create_or_update_work_order(
     payload: DesktopWorkOrderCreate,
@@ -270,7 +241,6 @@ def desktop_create_or_update_work_order(
     session: Annotated[Session, Depends(database_session)],
 ) -> dict[str, Any]:
     order = session.get(WorkOrder, payload.work_order_number)
-
     scheduled_for = _datetime_from_epoch(payload.scheduled_start)
 
     if order is None:
@@ -309,52 +279,54 @@ def desktop_create_or_update_work_order(
     }
 
 
-# ============================================================
-# OUTAGES
-# ============================================================
-
 @router.post("/outages", status_code=201)
 def desktop_create_outage(
     payload: DesktopOutageCreate,
     api_key_hash: Annotated[str, Depends(require_desktop_api_key)],
+    session: Annotated[Session, Depends(database_session)],
 ) -> dict[str, Any]:
-    global _OUTAGE_SEQUENCE
-
-    existing = next(
-        (
-            outage
-            for outage in _OUTAGES.values()
-            if outage["external_key"] == payload.external_key
-        ),
-        None,
-    )
-
-    now = int(time.time())
-
-    if existing:
-        existing.update(
-            {
-                **payload.model_dump(),
-                "updated_at": now,
-            }
+    outage = session.scalar(
+        select(DesktopOutage).where(
+            DesktopOutage.external_key == payload.external_key
         )
-        outage = existing
+    )
+    started_at = _datetime_from_epoch(payload.started_at)
+
+    if outage is None:
+        outage = DesktopOutage(
+            external_key=payload.external_key,
+            title=payload.title,
+            status=payload.status,
+            severity=payload.severity,
+            affected_area=payload.affected_area,
+            affected_services=payload.affected_services,
+            public_message=payload.public_message,
+            internal_notes=payload.internal_notes,
+            started_at=started_at,
+            published=payload.published,
+        )
+        session.add(outage)
     else:
-        _OUTAGE_SEQUENCE += 1
+        outage.title = payload.title
+        outage.status = payload.status
+        outage.severity = payload.severity
+        outage.affected_area = payload.affected_area
+        outage.affected_services = payload.affected_services
+        outage.public_message = payload.public_message
+        outage.internal_notes = payload.internal_notes
+        outage.started_at = started_at
+        outage.published = payload.published
 
-        outage = {
-            "id": _OUTAGE_SEQUENCE,
-            **payload.model_dump(),
-            "site_name": "",
-            "resolved_at": None,
-            "created_at": now,
-            "updated_at": now,
-        }
+    if outage.status.lower() in {"resolved", "closed"}:
+        outage.resolved_at = datetime.now(timezone.utc)
+    else:
+        outage.resolved_at = None
 
-        _OUTAGES[_OUTAGE_SEQUENCE] = outage
+    session.commit()
+    session.refresh(outage)
 
     return {
-        "outage": outage,
+        "outage": _serialize_outage(outage),
         "authenticated_key": api_key_hash[:12],
     }
 
@@ -364,9 +336,9 @@ def desktop_update_outage(
     outage_id: int,
     payload: DesktopOutageUpdate,
     api_key_hash: Annotated[str, Depends(require_desktop_api_key)],
+    session: Annotated[Session, Depends(database_session)],
 ) -> dict[str, Any]:
-    outage = _OUTAGES.get(outage_id)
-
+    outage = session.get(DesktopOutage, outage_id)
     if outage is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -374,16 +346,18 @@ def desktop_update_outage(
         )
 
     changes = payload.model_dump(exclude_unset=True)
-
     for field, value in changes.items():
-        outage[field] = value
+        setattr(outage, field, value)
 
-    outage["updated_at"] = int(time.time())
+    if outage.status.lower() in {"resolved", "closed"}:
+        outage.resolved_at = outage.resolved_at or datetime.now(timezone.utc)
+    else:
+        outage.resolved_at = None
 
-    if str(outage.get("status") or "").lower() == "resolved":
-        outage["resolved_at"] = int(time.time())
+    session.commit()
+    session.refresh(outage)
 
     return {
-        "outage": outage,
+        "outage": _serialize_outage(outage),
         "authenticated_key": api_key_hash[:12],
     }
