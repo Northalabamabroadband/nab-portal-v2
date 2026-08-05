@@ -7,6 +7,7 @@ from app.core.database import Base, SessionLocal, database_ready, engine
 from app.core.redis_client import redis_ready
 from app.core.settings import get_settings
 from app.modules.auth.service import bootstrap_identity
+from app.modules.desktop.router import router as desktop_router
 
 settings = get_settings()
 
@@ -33,6 +34,7 @@ if origins:
 app.add_middleware(AuditMiddleware)
 
 app.include_router(api_router)
+app.include_router(desktop_router)
 
 
 @app.on_event("startup")
