@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "production"
     app_name: str = "North Alabama Broadband Portal v2"
-    app_version: str = "2.0.0-rc1-build001"
+    app_version: str = "2.0.0-rc1-build004"
     app_secret_key: str
     database_url: str
     redis_url: str
@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     uisp_verify_tls: bool = False
     uisp_timeout_seconds: float = 20.0
     uisp_auth_mode: str = "app-key"
+    uisp_crm_auth_mode: str = ""
+    uisp_nms_auth_mode: str = ""
     uisp_crm_clients_path: str = "/crm/api/v1.0/clients"
     uisp_crm_invoices_path: str = "/crm/api/v1.0/invoices"
     uisp_crm_payments_path: str = "/crm/api/v1.0/payments"
