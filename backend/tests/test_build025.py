@@ -1,7 +1,7 @@
 from app.api.router import router
 from app.modules.mikrotik.client import (
     memory_utilization,
-    merge_connected_clients,
+    merge_network_neighbors,
     normalize_routeros_base_url,
 )
 from app.modules.platform.router import admin_capabilities
@@ -27,8 +27,8 @@ def test_routeros_memory_utilization_uses_string_values() -> None:
     assert memory_utilization({"total-memory": "0", "free-memory": "0"}) is None
 
 
-def test_dhcp_and_arp_clients_are_merged_by_normalized_mac() -> None:
-    rows = merge_connected_clients(
+def test_dhcp_and_arp_neighbors_are_merged_by_normalized_mac() -> None:
+    rows = merge_network_neighbors(
         [{
             "mac-address": "00:11:22:33:44:55",
             "address": "10.0.0.25",
@@ -49,8 +49,8 @@ def test_dhcp_and_arp_clients_are_merged_by_normalized_mac() -> None:
     assert rows[0]["hostname"] == "launchpad-tablet"
 
 
-def test_arp_only_client_is_preserved() -> None:
-    rows = merge_connected_clients([], [{
+def test_arp_only_network_neighbor_is_preserved() -> None:
+    rows = merge_network_neighbors([], [{
         "mac-address": "AA:BB:CC:DD:EE:FF",
         "address": "10.0.0.30",
         "interface": "bridge-lan",
@@ -65,6 +65,9 @@ def test_build025_registers_routeros_routes_and_capabilities() -> None:
     paths = {route.path for route in router.routes}
     assert "/api/v2/mikrotik/status" in paths
     assert "/api/v2/mikrotik/snapshot" in paths
+    mikrotik_paths = {path for path in paths if "/mikrotik/" in path}
+    assert mikrotik_paths
+    assert all("/customers/" not in path for path in mikrotik_paths)
     capabilities = admin_capabilities({})
     assert capabilities["release"] == "2.0.0-rc1-build025"
     assert (
