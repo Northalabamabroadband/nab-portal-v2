@@ -53,6 +53,8 @@ async def device_snapshot(
     ],
     network_id: str = Query(default="", max_length=128),
     network_name: str = Query(default="", max_length=256),
+    serial_number: str = Query(default="", max_length=128),
+    mac_address: str = Query(default="", max_length=64),
 ) -> dict:
     client = TAUCClient()
     try:
@@ -60,6 +62,8 @@ async def device_snapshot(
             device_id,
             network_id=network_id,
             network_name=network_name,
+            serial_number=serial_number,
+            mac_address=mac_address,
         )
     except TAUCError as exc:
         raise HTTPException(
