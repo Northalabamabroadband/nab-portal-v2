@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.modules.auth.dependencies import require_permission
 from app.modules.tauc.client import TAUCClient, TAUCError
@@ -51,10 +51,16 @@ async def device_snapshot(
         dict,
         Depends(require_permission("wifi.read")),
     ],
+    network_id: str = Query(default="", max_length=128),
+    network_name: str = Query(default="", max_length=256),
 ) -> dict:
     client = TAUCClient()
     try:
-        return await client.gateway_snapshot(device_id)
+        return await client.gateway_snapshot(
+            device_id,
+            network_id=network_id,
+            network_name=network_name,
+        )
     except TAUCError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
