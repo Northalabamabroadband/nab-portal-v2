@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.dependencies import database_session
 from app.models.operations import InventoryItem, SupportTicket, WorkOrder
 from app.modules.auth.dependencies import require_permission
 from app.modules.auth.service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
@@ -17,13 +17,6 @@ from app.modules.networkcenter.service import overview, topology
 
 router = APIRouter(prefix="/platform", tags=["platform-build005"])
 
-
-def database_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @router.get("/outages")
