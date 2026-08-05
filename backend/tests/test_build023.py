@@ -46,8 +46,52 @@ def test_tauc_network_id_lookup_is_case_insensitive() -> None:
     ) == "network-73"
 
 
+def test_tauc_network_can_be_resolved_from_gateway_identity() -> None:
+    client = TAUCClient()
+
+    async def fake_request(
+        method: str,
+        path: str,
+        *,
+        params=None,
+        **kwargs,
+    ):
+        assert method == "GET"
+        assert path == (
+            "/v1/openapi/network-system-management/network-name-list"
+        )
+        assert params == {
+            "page": "1",
+            "pageSize": "10",
+            "sn": "EX920V123",
+            "mac": "001122334455",
+        }
+        return {
+            "result": {
+                "data": [
+                    {
+                        "id": "network-91",
+                        "networkName": "Rocket City Gateway",
+                    }
+                ]
+            }
+        }
+
+    client.request = fake_request  # type: ignore[method-assign]
+    resolved = asyncio.run(
+        client.network_by_device(
+            serial_number="EX920V123",
+            mac_address="00:11:22:33:44:55",
+        )
+    )
+    assert resolved == {
+        "networkId": "network-91",
+        "networkName": "Rocket City Gateway",
+    }
+
+
 def test_build023_reports_network_id_recovery() -> None:
     capabilities = admin_capabilities({})
     assert capabilities["features"]["tauc_network_id_resolution"] == (
-        "assignment-or-network-name"
+        "assignment-name-or-device-identity"
     )
