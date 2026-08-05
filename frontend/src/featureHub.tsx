@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { request as load } from "./api";
 import { AccessControl } from "./accessControl";
+import { FeatureErrorBoundary } from "./featureErrorBoundary";
 
 type Mode = "parity" | "incidents" | "outages" | "network" | "field" | "reports" | "portal" | "admin" | "wifi";
 type Json = Record<string, any>;
@@ -88,7 +89,7 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
 
   return <section className="feature-hub">
     <header>
-      <div><p className="eyebrow">RC1 BUILD 009</p><h2>{title[mode]}</h2></div>
+      <div><p className="eyebrow">RC1 BUILD 012</p><h2>{title[mode]}</h2></div>
       <button onClick={refresh}>{working ? "Refreshing…" : "Refresh"}</button>
     </header>
     {error && <div className="error-message">{error}</div>}
@@ -166,7 +167,9 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
         <Value label="Permissions" value={Object.keys(data.permissions || {}).length} />
         <Value label="Administrators" value={data.access?.users?.length ?? 0} />
       </div>
-      <AccessControl token={token} access={data.access} onChanged={refresh} />
+      <FeatureErrorBoundary onRetry={refresh} resetKey={`${mode}:${working}:${error}`}>
+        <AccessControl token={token} access={data.access} onChanged={refresh} />
+      </FeatureErrorBoundary>
     </>}
     {data && mode === "wifi" && <div className="feature-grid"><article><h3>TAUC</h3><strong>{data.tauc?.configured ? "Configured" : "Configuration required"}</strong><p>SSID, password, reboot, and diagnostics controls remain permission and endpoint gated.</p></article><article><h3>Customer gateway workflow</h3><p>Open Customer 360 to resolve a gateway and view managed Wi-Fi identity.</p></article></div>}
   </section>;
