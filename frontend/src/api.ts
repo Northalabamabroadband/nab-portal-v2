@@ -14,6 +14,8 @@ export async function request<T>(
     credentials: "include"
   });
 
+  if (response.status === 204) return undefined as T;
+
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload.detail || `Request failed: ${response.status}`);
