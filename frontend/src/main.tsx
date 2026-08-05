@@ -235,6 +235,13 @@ function CustomerView({
 }) {
   const [data, setData] = useState<Customer360 | null>(null);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionBusy, setActionBusy] = useState("");
+  const [ticketSubject, setTicketSubject] = useState("");
+  const [workTitle, setWorkTitle] = useState("");
+  const [ssid, setSsid] = useState("");
+  const [wifiPassword, setWifiPassword] = useState("");
 
   useEffect(() => {
     setData(null);
@@ -246,6 +253,27 @@ function CustomerView({
         setError(caught instanceof Error ? caught.message : "Unable to load customer")
       );
   }, [clientId, token]);
+
+
+  const runAction = async (label: string, path: string, body: Record<string, unknown> = {}) => {
+    setActionBusy(label); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(path, { method: "POST", body: JSON.stringify(body) }, token);
+      setActionMessage(`${label} completed successfully.`);
+      if (label === "Support ticket") setTicketSubject("");
+      if (label === "Field work order") setWorkTitle("");
+      const refreshed = await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      );
+      setData(refreshed);
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : `${label} failed`);
+    } finally {
+      setActionBusy("");
+    }
+  };
 
   if (error) {
     return (
@@ -266,6 +294,7 @@ function CustomerView({
 
   const device = data.gateway?.device || {};
   const network = data.gateway?.network || {};
+  const deviceId = String(device.deviceId || device.id || device.device_id || "");
 
   return (
     <section className="customer360-shell">
@@ -304,6 +333,40 @@ function CustomerView({
           detail="Provisioned services"
         />
       </div>
+
+      <section className="customer-action-center">
+        <div className="panel-heading"><div><p className="eyebrow">CUSTOMER ACTION CENTER</p><h3>Resolve service from one workspace</h3></div></div>
+        {actionError && <div className="error-message">{actionError}</div>}
+        {actionMessage && <div className="dispatch-message">{actionMessage}</div>}
+        <div className="customer-action-grid">
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Support ticket", "/tickets", { client_id: data.client_id, subject: ticketSubject, description: `Opened from Customer 360 for ${data.name}`, priority: "high" }); }}>
+            <h4>Open support ticket</h4>
+            <input required minLength={3} value={ticketSubject} onChange={event => setTicketSubject(event.target.value)} placeholder="Issue summary" />
+            <button disabled={Boolean(actionBusy)}>{actionBusy === "Support ticket" ? "Opening…" : "Open ticket"}</button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Field work order", "/workorders", { client_id: data.client_id, title: workTitle, description: `Dispatched from Customer 360 for ${data.name}`, priority: "high", service_address: data.address || null }); }}>
+            <h4>Dispatch field work</h4>
+            <input required minLength={3} value={workTitle} onChange={event => setWorkTitle(event.target.value)} placeholder="Work required" />
+            <button disabled={Boolean(actionBusy)}>{actionBusy === "Field work order" ? "Dispatching…" : "Create work order"}</button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Wi-Fi name update", "/tauc/controls/wifi/ssid", { device_id: deviceId, value: ssid }); }}>
+            <h4>Update Wi-Fi name</h4>
+            <input required disabled={!deviceId} value={ssid} onChange={event => setSsid(event.target.value)} placeholder={deviceId ? "New SSID" : "Gateway ID unavailable"} />
+            <button disabled={Boolean(actionBusy) || !deviceId}>Apply SSID</button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Wi-Fi password update", "/tauc/controls/wifi/password", { device_id: deviceId, value: wifiPassword }); }}>
+            <h4>Update Wi-Fi password</h4>
+            <input required minLength={8} type="password" disabled={!deviceId} value={wifiPassword} onChange={event => setWifiPassword(event.target.value)} placeholder={deviceId ? "New password" : "Gateway ID unavailable"} />
+            <button disabled={Boolean(actionBusy) || !deviceId}>Apply password</button>
+          </form>
+          <div className="gateway-actions">
+            <h4>Gateway maintenance</h4>
+            <button disabled={Boolean(actionBusy) || !deviceId} onClick={() => runAction("Gateway diagnostics", "/tauc/controls/diagnostics", { device_id: deviceId })}>Run diagnostics</button>
+            <button className="danger-action" disabled={Boolean(actionBusy) || !deviceId} onClick={() => { if (window.confirm("Reboot this customer gateway now?")) runAction("Gateway reboot", "/tauc/controls/reboot", { device_id: deviceId }); }}>Reboot gateway</button>
+          </div>
+        </div>
+        <p className="muted">TAUC write actions remain permission-checked and configuration-gated by verified tenant endpoint paths.</p>
+      </section>
 
       <div className="dashboard-grid">
         <article className="panel large">
