@@ -40,3 +40,11 @@ docker-data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Integration credentials and local emergency backups
+secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+*.before-*
