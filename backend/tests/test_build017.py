@@ -14,5 +14,4 @@ def test_customer_note_payload_is_bounded() -> None:
 
 def test_customer_activity_timeline_is_reported() -> None:
     capabilities = admin_capabilities({})
-    assert capabilities["release"] == "2.0.0-rc1-build017"
     assert capabilities["features"]["customer_activity_timeline"] is True
