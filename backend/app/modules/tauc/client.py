@@ -364,18 +364,70 @@ class TAUCClient:
             },
         )
 
+    def _resource_path(
+        self,
+        template: str,
+        *,
+        endpoint_name: str,
+        device_id: str = "",
+        network_id: str = "",
+        fallback_identifier: str = "device_id",
+    ) -> str:
+        if not template:
+            raise TAUCError(f"TAUC {endpoint_name} is not configured")
+
+        path = template
+        replaced = False
+        for placeholder, identifier, label in (
+            ("{device_id}", device_id, "device ID"),
+            ("{deviceId}", device_id, "device ID"),
+            ("{network_id}", network_id, "network ID"),
+            ("{networkId}", network_id, "network ID"),
+        ):
+            if placeholder not in path:
+                continue
+            if not identifier:
+                raise TAUCError(
+                    f"TAUC {endpoint_name} requires a {label}, but TAUC did "
+                    "not return one for this gateway"
+                )
+            path = path.replace(placeholder, identifier)
+            replaced = True
+
+        if "{" in path or "}" in path:
+            raise TAUCError(
+                f"TAUC {endpoint_name} contains an unsupported path placeholder"
+            )
+
+        if not replaced:
+            identifier = (
+                network_id
+                if fallback_identifier == "network_id"
+                else device_id
+            )
+            if not identifier:
+                label = (
+                    "network ID"
+                    if fallback_identifier == "network_id"
+                    else "device ID"
+                )
+                raise TAUCError(
+                    f"TAUC {endpoint_name} requires a {label}, but TAUC did "
+                    "not return one for this gateway"
+                )
+            path = f"{path.rstrip('/')}/{identifier}"
+        return path
+
     def _device_path(
         self,
         template: str,
         device_id: str,
         endpoint_name: str,
     ) -> str:
-        if not template:
-            raise TAUCError(f"TAUC {endpoint_name} is not configured")
-        return (
-            template.replace("{device_id}", device_id)
-            if "{device_id}" in template
-            else f"{template.rstrip('/')}/{device_id}"
+        return self._resource_path(
+            template,
+            endpoint_name=endpoint_name,
+            device_id=device_id,
         )
 
     def _control_path(self, template: str, device_id: str) -> str:
@@ -403,11 +455,17 @@ class TAUCClient:
         path = self._control_path(settings.tauc_reboot_path, device_id)
         return await self.request("POST", path)
 
-    async def connected_clients(self, device_id: str) -> Any:
-        path = self._device_path(
+    async def connected_clients(
+        self,
+        device_id: str,
+        network_id: str,
+    ) -> Any:
+        path = self._resource_path(
             settings.tauc_network_clients_path,
-            device_id,
-            "connected-device endpoint",
+            endpoint_name="connected-device endpoint",
+            device_id=device_id,
+            network_id=network_id,
+            fallback_identifier="network_id",
         )
         return await self.request("GET", path, params={"refresh": "true"})
 
@@ -417,6 +475,9 @@ class TAUCClient:
         device = result_data(device_payload)
         if not device and isinstance(device_payload, dict):
             device = device_payload
+        network_id = str(
+            device.get("networkId") or device.get("networkID") or ""
+        )
 
         embedded_clients = extract_records(device_payload, {
             "clients",
@@ -456,17 +517,21 @@ class TAUCClient:
         )
         if settings.tauc_network_clients_path:
             try:
-                clients_payload = await self.connected_clients(device_id)
+                clients_payload = await self.connected_clients(
+                    device_id,
+                    network_id,
+                )
                 connected_devices = extract_records(clients_payload, {
                     "result",
                     "clients",
                     "clientList",
+                    "networkClients",
                     "connectedDevices",
                     "connectedClients",
                     "stations",
                     "hosts",
                 })
-                connected_devices_source = "configured_endpoint"
+                connected_devices_source = "network_clients_endpoint"
             except TAUCError as exc:
                 warnings.append(f"Connected-device data unavailable: {exc}")
         elif not embedded_clients:
@@ -477,6 +542,7 @@ class TAUCClient:
 
         return {
             "device_id": device_id,
+            "network_id": network_id or None,
             "status": "partial" if warnings else "ready",
             "device": device,
             "wifi": wifi,
