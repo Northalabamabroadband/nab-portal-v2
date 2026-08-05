@@ -59,12 +59,24 @@ def build_incident_command(
         ]
         customer_impact = event["customers_affected"]
         severity = "critical" if customer_impact >= 25 else "major" if customer_impact else "warning"
+        marker = incident_marker(event["id"])
+        ticket = next(
+            (row for row in ticket_rows if marker in str(getattr(row, "description", "") or "")),
+            None,
+        )
+        workorder = next(
+            (row for row in workorder_rows if marker in str(getattr(row, "description", "") or "")),
+            None,
+        )
         incidents.append({
             **event,
             "severity": severity,
             "alert_count": len(related_alerts),
             "phase": "active",
             "recommended_action": _recommendation(customer_impact, len(event["devices"])),
+            "response_ready": ticket is not None and workorder is not None,
+            "ticket_id": getattr(ticket, "id", None),
+            "workorder_id": getattr(workorder, "id", None),
         })
 
     unassigned_work = sum(
