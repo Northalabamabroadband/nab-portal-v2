@@ -21,6 +21,35 @@ class TAUCClient:
         if body: md5=base64.b64encode(hashlib.md5(body).digest()).decode(); parts.append(md5)
         parts.extend((timestamp,nonce,path)); signature=hmac.new(self.secret_key.encode(),"\n".join(parts).encode(),hashlib.sha256).hexdigest()
         return f"Nonce={nonce},AccessKey={self.access_key},Signature={signature},Timestamp={timestamp}",md5
+    def signing_headers(
+        self,
+        *,
+        method: str,
+        path: str,
+        body: Any = None,
+    ) -> dict[str, str]:
+        del method  # TAUC signs content metadata and the request path.
+        path = path if path.startswith("/") else f"/{path}"
+        encoded = self._body(body) if body is not None else None
+        authorization, content_md5 = self._authorization(path, encoded)
+        fields = dict(
+            item.split("=", 1)
+            for item in authorization.split(",")
+            if "=" in item
+        )
+        headers = {
+            "Accept": "application/json",
+            "X-Authorization": authorization,
+            "X-Timestamp": fields.get("Timestamp", ""),
+            "X-Nonce": fields.get("Nonce", ""),
+        }
+        if encoded is not None:
+            headers.update({
+                "Content-Type": "application/json",
+                "Content-MD5": content_md5 or "",
+            })
+        return headers
+
     async def request(self,method:str,path:str,*,params:Mapping[str,Any]|None=None,json_data:Any=None,extra_headers:Mapping[str,str]|None=None)->Any:
         if not self.configured(): raise TAUCError("TAUC access key, secret key, and mTLS certificate/key are required")
         path=path if path.startswith("/") else f"/{path}"; body=self._body(json_data) if json_data is not None else None; auth,md5=self._authorization(path,body); headers={"Accept":"application/json","X-Authorization":auth}
@@ -35,10 +64,10 @@ class TAUCClient:
             code=payload.get("errorCode",response.status_code) if isinstance(payload,dict) else response.status_code; message=payload.get("msg",response.reason_phrase) if isinstance(payload,dict) else response.reason_phrase; raise TAUCError(f"TAUC error {code}: {message}")
         return payload
     async def get_device_id(self,serial_number:str,mac_address:str)->str:
-        payload=await self.request("GET","/v1/openapi/device-information/device-id",params={"sn":serial_number.strip(),"mac":compact_mac(mac_address)}); device_id=str(result_data(payload).get("deviceId") or "")
+        payload=await self.request("GET",settings.tauc_device_lookup_path,params={"sn":serial_number.strip(),"mac":compact_mac(mac_address)}); device_id=str(result_data(payload).get("deviceId") or "")
         if not device_id: raise TAUCError("TAUC did not return a device ID")
         return device_id
-    async def device_info(self,device_id:str)->Any: return await self.request("GET",f"/v1/openapi/device-information/device-info/{device_id}")
+    async def device_info(self,device_id:str)->Any: return await self.request("GET",f"{settings.tauc_network_lookup_path.rstrip('/')}/{device_id}")
     async def device_lookup(self,*,serial_number:str,mac_address:str|None=None)->dict[str,Any]:
         if not mac_address: raise TAUCError("TAUC lookup requires serial number and MAC")
         device_id=await self.get_device_id(serial_number,mac_address); payload=await self.device_info(device_id); return {**result_data(payload),"deviceId":device_id,"sn":serial_number,"mac":compact_mac(mac_address)}
