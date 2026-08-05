@@ -44,6 +44,16 @@ type SearchItem = {
   status: string;
 };
 
+type CustomerActivity = {
+  id: string;
+  kind: "note" | "ticket" | "workorder";
+  title: string;
+  detail: string;
+  status: string;
+  actor: string;
+  occurred_at: string;
+};
+
 type Customer360 = {
   client_id: string;
   name: string;
@@ -72,6 +82,7 @@ type Customer360 = {
     tickets: Record<string, unknown>[];
     workorders: Record<string, unknown>[];
   };
+  activity?: CustomerActivity[];
 };
 
 type LiveSummary = {
@@ -242,6 +253,7 @@ function CustomerView({
   const [workTitle, setWorkTitle] = useState("");
   const [ssid, setSsid] = useState("");
   const [wifiPassword, setWifiPassword] = useState("");
+  const [noteBody, setNoteBody] = useState("");
 
   useEffect(() => {
     setData(null);
@@ -270,6 +282,31 @@ function CustomerView({
       setData(refreshed);
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : `${label} failed`);
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const addNote = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const body = noteBody.trim();
+    if (!body) return;
+    setActionBusy("Account note"); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(
+        `/platform/customers/${clientId}/notes`,
+        { method: "POST", body: JSON.stringify({ body }) },
+        token
+      );
+      setNoteBody("");
+      setData(await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      ));
+      setActionMessage("Account note added to the customer timeline.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to add account note");
     } finally {
       setActionBusy("");
     }
@@ -366,6 +403,28 @@ function CustomerView({
           </div>
         </div>
         <p className="muted">TAUC write actions remain permission-checked and configuration-gated by verified tenant endpoint paths.</p>
+      </section>
+
+      <section className="customer-timeline panel">
+        <div className="panel-heading">
+          <div><p className="eyebrow">ACCOUNT HISTORY</p><h3>Customer activity timeline</h3></div>
+          <span>{data.activity?.length ?? 0} events</span>
+        </div>
+        <form className="timeline-note-form" onSubmit={addNote}>
+          <textarea required maxLength={2000} value={noteBody} onChange={event => setNoteBody(event.target.value)} placeholder="Add an internal account note visible to portal staff…" />
+          <button disabled={Boolean(actionBusy)}>{actionBusy === "Account note" ? "Saving…" : "Add note"}</button>
+        </form>
+        <div className="timeline-list">
+          {(data.activity || []).map(item => <article className={`timeline-item ${item.kind}`} key={`${item.kind}-${item.id}`}>
+            <span className="timeline-marker" aria-hidden="true" />
+            <div>
+              <header><strong>{item.title}</strong><time dateTime={item.occurred_at}>{new Date(item.occurred_at).toLocaleString()}</time></header>
+              <p>{item.detail}</p>
+              <footer>{item.actor || "System"}{item.status ? ` · ${item.status.replaceAll("_", " ")}` : ""}</footer>
+            </div>
+          </article>)}
+          {!data.activity?.length && <p className="muted">No account activity has been recorded yet.</p>}
+        </div>
       </section>
 
       <div className="dashboard-grid">
