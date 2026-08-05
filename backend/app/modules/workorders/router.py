@@ -4,20 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.dependencies import database_session
 from app.models.operations import WorkOrder
 from app.modules.auth.dependencies import require_permission
 from app.modules.workorders.schemas import WorkOrderCreate, WorkOrderRead, WorkOrderUpdate
 
 router = APIRouter(prefix="/workorders", tags=["workorders"])
 
-
-def database_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @router.get("", response_model=list[WorkOrderRead])
