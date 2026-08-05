@@ -55,7 +55,10 @@ def test_resolved_snapshots_are_cacheable() -> None:
 def test_build024_reports_tauc_request_coordination() -> None:
     capabilities = admin_capabilities({})
     assert capabilities["features"]["tauc_request_throttle"] == (
-        "global-cooldown-with-safe-get-retry"
+        "one-per-second-with-safe-get-retry"
+    )
+    assert capabilities["features"]["tauc_rate_limit_cooldown"] == (
+        "global-three-second-backoff"
     )
     assert capabilities["features"]["tauc_snapshot_coalescing"] == (
         "in-flight-and-short-cache"
