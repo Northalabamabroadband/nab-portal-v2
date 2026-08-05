@@ -259,9 +259,12 @@ def create_customer_note(
     claims: Annotated[dict, Depends(require_permission("customers.write"))],
     session: Annotated[Session, Depends(database_session)],
 ) -> dict:
+    body = payload.body.strip()
+    if not body:
+        raise HTTPException(status_code=422, detail="Note cannot be blank")
     note = CustomerNote(
         client_id=client_id,
-        body=payload.body.strip(),
+        body=body,
         author_email=str(claims.get("email") or claims.get("sub") or "unknown"),
     )
     session.add(note)
@@ -399,7 +402,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build011",
+        "release": "2.0.0-rc1-build017",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
