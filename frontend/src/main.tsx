@@ -799,7 +799,7 @@ function Dashboard({
             ["◉", "Customers"],
             ["⌁", "Managed Wi-Fi"],
             ["⌘", "Network"],
-            ["⌗", "RouterOS"],
+            ["⌗", "MikroTik NOC"],
             ["⌬", "Network Telemetry"],
             ["⌇", "Fiber"],
             ["⌖", "Fiber Map"],
@@ -881,7 +881,7 @@ function Dashboard({
           <IntegrationHealth token={token} />
         ) : activePage === "Network" ? (
           <NetworkOperationsCenter token={token} />
-        ) : activePage === "RouterOS" ? (
+        ) : activePage === "MikroTik NOC" ? (
           <MikroTikOperations token={token} />
         ) : activePage === "Network Telemetry" ? (
           <FeatureHub token={token} mode="network" />
@@ -926,7 +926,7 @@ function Dashboard({
               <div>
                 <p className="eyebrow">LIVE TELEMETRY</p>
                 <h2>North Alabama Broadband Flight Deck</h2>
-                <p>UISP, TAUC, MikroTik RouterOS, Customer 360, and live telemetry are integrated.</p>
+                <p>UISP, TAUC, MikroTik infrastructure, Customer 360, and live telemetry are integrated.</p>
               </div>
               <span className="live-chip"><i /> {summary?.status || "Operational"}</span>
             </section>
@@ -954,7 +954,7 @@ function Dashboard({
                 <div className="readiness-list">
                   <div><span>UISP</span><strong>{summary?.uisp?.connected ? "Connected" : "Unavailable"}</strong></div>
                   <div><span>TAUC</span><strong>{summary?.tauc?.configured ? "Configured" : "Not configured"}</strong></div>
-                  <div><span>MikroTik</span><strong>{summary?.mikrotik?.connected ? "Connected" : summary?.mikrotik?.configured ? "Unavailable" : "Not configured"}</strong></div>
+                  <div><span>MikroTik Core</span><strong>{summary?.mikrotik?.connected ? "Connected" : summary?.mikrotik?.configured ? "Unavailable" : "Not configured"}</strong></div>
                   <div><span>Customer 360</span><strong>Online</strong></div>
                   <div><span>Live WebSocket</span><strong>{liveState}</strong></div>
                 </div>
