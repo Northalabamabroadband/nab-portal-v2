@@ -23,7 +23,7 @@ from app.modules.incidents.service import (
 )
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build022"])
+router = APIRouter(prefix="/platform", tags=["platform-build023"])
 
 
 class CustomerNoteCreate(BaseModel):
@@ -415,7 +415,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build022",
+        "release": "2.0.0-rc1-build023",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -434,7 +434,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build022",
+        "release": "2.0.0-rc1-build023",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -457,5 +457,6 @@ def admin_capabilities(
             "tauc_request_throttle": "one-per-second-with-safe-get-retry",
             "tauc_live_gateway_snapshot": "wifi-and-connected-devices",
             "tauc_network_clients": "network-id-scoped",
+            "tauc_network_id_resolution": "assignment-or-network-name",
         },
     }
