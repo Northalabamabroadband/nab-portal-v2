@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "production"
     app_name: str = "NAB Mission Control"
-    app_version: str = "2.0.0-rc1-build024"
+    app_version: str = "2.0.0-rc1-build025"
     app_secret_key: str
     database_url: str
     redis_url: str
@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     uisp_crm_payments_path: str = "/crm/api/v1.0/payments"
     uisp_nms_devices_path: str = "/nms/api/v2.1/devices"
     uisp_nms_sites_path: str = "/nms/api/v2.1/sites"
+
+    mikrotik_base_url: str = ""
+    mikrotik_username: str = ""
+    mikrotik_password: str = ""
+    mikrotik_verify_tls: bool = True
+    mikrotik_allow_insecure_http: bool = False
+    mikrotik_ca_cert: str = ""
+    mikrotik_timeout_seconds: float = 15.0
 
     tauc_base_url: str = Field(default="https://use1-tauc-openapi.tplinkcloud.com", validation_alias=AliasChoices("TAUC_BASE_URL", "TAUC_API_BASE_URL", "TAUC_URL"))
     tauc_access_key: str = Field(default="", validation_alias=AliasChoices("TAUC_ACCESS_KEY", "TAUC_API_ACCESS_KEY", "TAUC_APP_KEY"))
