@@ -4,19 +4,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.dependencies import database_session
 from app.models.operations import InventoryItem, SupportTicket, WorkOrder
 from app.modules.auth.dependencies import require_permission
 
 router = APIRouter(prefix="/operations", tags=["operations"])
 
-
-def database_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @router.get("/summary")
