@@ -306,11 +306,11 @@ export function MikroTikOperations({ token }: { token: string }) {
                 </div>
                 <span>{snapshot.network_neighbors.length} observed</span>
               </div>
-              <div className="router-client-list">
+              <div className="router-neighbor-list">
                 {snapshot.network_neighbors.map((row, index) => (
                   <div key={textValue(row.id, String(index))}>
                     <span className={
-                      "client-beacon " +
+                      "neighbor-beacon " +
                       (row.active ? "online" : "offline")
                     } />
                     <div>
