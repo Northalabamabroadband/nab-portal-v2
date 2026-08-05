@@ -15,4 +15,4 @@ assert 'secrets/' in ignore and '*.key' in ignore
 print('Static RC1 checks passed.')
 PY
 if command -v docker >/dev/null 2>&1; then docker compose -f compose.rc1.yml config >/dev/null; fi
-echo "RC1 Build 004 validation passed."
+echo "RC1 Build 005 validation passed."
