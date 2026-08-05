@@ -342,9 +342,14 @@ class TAUCClient:
         }
 
     async def wifi_ssid(self, device_id: str) -> Any:
+        path = self._device_path(
+            settings.tauc_wifi_ssid_read_path,
+            device_id,
+            "Wi-Fi SSID read endpoint",
+        )
         return await self.request(
             "GET",
-            f"/v1/openapi/device-management/aginet/wifi-ssid/{device_id}",
+            path,
             params={"refresh": "true"},
         )
 
@@ -511,6 +516,7 @@ class TAUCClient:
             "base_url": self.base_url,
             "device_lookup_path": settings.tauc_device_lookup_path,
             "network_lookup_path": settings.tauc_network_lookup_path,
+            "wifi_ssid_read_path": settings.tauc_wifi_ssid_read_path,
             "connected_devices_path": settings.tauc_network_clients_path or None,
             "diagnostics_path": settings.tauc_diagnostics_path or None,
             "minimum_request_interval_seconds": self.minimum_request_interval,
