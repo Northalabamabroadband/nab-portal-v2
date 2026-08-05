@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.modules.uisp.client import UISPClient, UISPError, extract_records
+from app.modules.uisp.client import UISPClient
 
 
 def first_value(record: dict[str, Any], *keys: str, default: Any = None) -> Any:
