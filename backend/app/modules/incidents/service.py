@@ -103,6 +103,11 @@ def build_incident_command(
     }
 
 
+def incident_marker(incident_id: str) -> str:
+    normalized = _slug(incident_id)
+    return f"[incident:{normalized}]"
+
+
 def _recommendation(customers_affected: int, devices_offline: int) -> str:
     if customers_affected >= 25:
         return "Open a major-incident bridge and dispatch the nearest available ground crew."
