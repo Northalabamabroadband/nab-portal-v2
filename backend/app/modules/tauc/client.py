@@ -11,6 +11,17 @@ def result_data(payload:Any)->dict[str,Any]:
     if not isinstance(payload,dict): return {}
     result=payload.get("result")
     return result if isinstance(result,dict) else {}
+
+
+def tauc_error_message(status_code:int,method:str,base_url:str,path:str,payload:Any,reason:str)->str:
+    code=payload.get("errorCode",status_code) if isinstance(payload,dict) else status_code
+    message=payload.get("msg",reason) if isinstance(payload,dict) else reason
+    if status_code==404:
+        return (
+            f"TAUC endpoint not found: {method.upper()} {base_url}{path}. "
+            "Check TAUC_BASE_URL and the configured TAUC lookup path for this tenant region."
+        )
+    return f"TAUC error {code}: {message}"
 class TAUCClient:
     def __init__(self)->None:
         self.base_url=settings.tauc_base_url.rstrip("/"); self.access_key=settings.tauc_access_key.strip(); self.secret_key=settings.tauc_secret_key.strip(); self.client_cert=Path(settings.tauc_client_cert); self.client_key=Path(settings.tauc_client_key); self.verify_tls=settings.tauc_verify_tls; self.timeout=settings.tauc_timeout_seconds
@@ -61,7 +72,7 @@ class TAUCClient:
         try: payload=response.json() if response.content else {}
         except ValueError as exc: raise TAUCError(f"TAUC returned invalid JSON (HTTP {response.status_code})") from exc
         if response.status_code>=400 or (isinstance(payload,dict) and payload.get("errorCode") not in (None,0,"0")):
-            code=payload.get("errorCode",response.status_code) if isinstance(payload,dict) else response.status_code; message=payload.get("msg",response.reason_phrase) if isinstance(payload,dict) else response.reason_phrase; raise TAUCError(f"TAUC error {code}: {message}")
+            raise TAUCError(tauc_error_message(response.status_code,method,self.base_url,path,payload,response.reason_phrase))
         return payload
     async def get_device_id(self,serial_number:str,mac_address:str)->str:
         payload=await self.request("GET",settings.tauc_device_lookup_path,params={"sn":serial_number.strip(),"mac":compact_mac(mac_address)}); device_id=str(result_data(payload).get("deviceId") or "")
@@ -101,7 +112,7 @@ class TAUCClient:
         return await self.request("GET", path)
 
     async def connection_status(self)->dict[str,Any]:
-        status={"configured":self.configured(),"connected":None,"base_url":self.base_url,"authentication_mode":"mtls-aksk-x-authorization","certificate_present":self.client_cert.is_file(),"private_key_present":self.client_key.is_file(),"access_key_configured":bool(self.access_key),"secret_key_configured":bool(self.secret_key)}
+        status={"configured":self.configured(),"connected":None,"base_url":self.base_url,"device_lookup_path":settings.tauc_device_lookup_path,"network_lookup_path":settings.tauc_network_lookup_path,"authentication_mode":"mtls-aksk-x-authorization","certificate_present":self.client_cert.is_file(),"private_key_present":self.client_key.is_file(),"access_key_configured":bool(self.access_key),"secret_key_configured":bool(self.secret_key)}
         if self.configured() and settings.tauc_test_serial_number and settings.tauc_test_mac_address:
             try:
                 device=await self.device_lookup(serial_number=settings.tauc_test_serial_number,mac_address=settings.tauc_test_mac_address); status.update({"connected":True,"device_id":device.get("deviceId"),"network_id":device.get("networkId"),"device_model":device.get("deviceModel") or device.get("model")})
