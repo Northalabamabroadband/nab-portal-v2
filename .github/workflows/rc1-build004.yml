@@ -2,9 +2,9 @@ name: RC1 Build Validation
 
 on:
   push:
-    branches: [rc1-build004, rc1-build005, rc1-build006, rc1-build007, rc1-build008, rc1-build009, rc1-build010, rc1-build011, rc1-build012, rc1-build013, rc1-build014, rc1-build015, rc1-build016, rc1-build017, rc1-build018, rc1-build019, rc1-build020, rc1-build021, rc1-build022, rc1-build023]
+    branches: [rc1-build004, rc1-build005, rc1-build006, rc1-build007, rc1-build008, rc1-build009, rc1-build010, rc1-build011, rc1-build012, rc1-build013, rc1-build014, rc1-build015, rc1-build016, rc1-build017, rc1-build018, rc1-build019, rc1-build020, rc1-build021, rc1-build022, rc1-build023, rc1-build024]
   pull_request:
-    branches: [main, rc1-build004, rc1-build005, rc1-build006, rc1-build007, rc1-build008, rc1-build009, rc1-build010, rc1-build011, rc1-build012, rc1-build013, rc1-build014, rc1-build015, rc1-build016, rc1-build017, rc1-build018, rc1-build019, rc1-build020, rc1-build021, rc1-build022]
+    branches: [main, rc1-build004, rc1-build005, rc1-build006, rc1-build007, rc1-build008, rc1-build009, rc1-build010, rc1-build011, rc1-build012, rc1-build013, rc1-build014, rc1-build015, rc1-build016, rc1-build017, rc1-build018, rc1-build019, rc1-build020, rc1-build021, rc1-build022, rc1-build023]
 
 permissions:
   contents: read
