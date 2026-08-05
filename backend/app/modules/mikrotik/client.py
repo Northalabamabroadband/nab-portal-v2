@@ -157,6 +157,7 @@ class MikroTikClient:
         self.username = settings.mikrotik_username.strip()
         self.password = settings.mikrotik_password
         self.verify_tls = settings.mikrotik_verify_tls
+        self.allow_insecure_http = settings.mikrotik_allow_insecure_http
         self.ca_cert = settings.mikrotik_ca_cert.strip()
         self.timeout = settings.mikrotik_timeout_seconds
 
@@ -180,6 +181,15 @@ class MikroTikClient:
             raise MikroTikError(
                 "MikroTik is not configured; set MIKROTIK_BASE_URL, "
                 "MIKROTIK_USERNAME, and MIKROTIK_PASSWORD"
+            )
+        if (
+            self.base_url.lower().startswith("http://")
+            and not self.allow_insecure_http
+        ):
+            raise MikroTikError(
+                "Refusing to send RouterOS credentials over HTTP. Configure "
+                "HTTPS or explicitly set MIKROTIK_ALLOW_INSECURE_HTTP=true "
+                "for a temporary isolated lab."
             )
         resource_path = "/" + path.strip("/")
         url = f"{self.base_url}{resource_path}"
@@ -240,6 +250,7 @@ class MikroTikClient:
             "base_url": self.base_url or None,
             "authentication_mode": "HTTP Basic",
             "tls_verification": self.verify_tls,
+            "secure_transport": self.base_url.lower().startswith("https://"),
             "ca_certificate_configured": bool(self.ca_cert),
             "mode": "read-only",
         }
