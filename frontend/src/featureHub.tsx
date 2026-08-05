@@ -34,6 +34,8 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
   const [data, setData] = useState<Json | null>(null);
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
+  const [dispatching, setDispatching] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
 
   const refresh = async () => {
     setWorking(true); setError("");
@@ -54,12 +56,38 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
 
   useEffect(() => { refresh(); }, [mode, token]);
 
+
+  const dispatch = async (incidentId: string) => {
+    setDispatching(incidentId);
+    setActionMessage("");
+    setError("");
+    try {
+      const result = await load<Json>(
+        `/platform/incidents/${incidentId}/dispatch`,
+        token,
+        { method: "POST" }
+      );
+      const created = (result.created || []).join(" and ");
+      setActionMessage(
+        created
+          ? `Dispatch created ${created}. Existing resources were reused automatically.`
+          : "Dispatch already exists. No duplicate records were created."
+      );
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to dispatch incident");
+    } finally {
+      setDispatching("");
+    }
+  };
+
   return <section className="feature-hub">
     <header>
-      <div><p className="eyebrow">RC1 BUILD 007</p><h2>{title[mode]}</h2></div>
+      <div><p className="eyebrow">RC1 BUILD 008</p><h2>{title[mode]}</h2></div>
       <button onClick={refresh}>{working ? "Refreshing…" : "Refresh"}</button>
     </header>
     {error && <div className="error-message">{error}</div>}
+    {actionMessage && <div className="dispatch-message">{actionMessage}</div>}
     {data && mode === "incidents" && <>
       <div className="incident-state">
         <span>Mission state</span>
@@ -78,6 +106,9 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
           <p>{incident.devices.length} device{incident.devices.length === 1 ? "" : "s"} offline · {incident.customers_affected} customers affected</p>
           <strong>{incident.alert_count} linked alerts</strong>
           <small>{incident.recommended_action}</small>
+          <button className="dispatch-button" onClick={() => dispatch(incident.id)} disabled={Boolean(dispatching)}>
+            {dispatching === incident.id ? "Dispatching…" : "Create response package"}
+          </button>
         </article>
       )}</div>
       {!data.incidents?.length && <article className="feature-detail"><h3>All systems nominal</h3><p>No active device-offline incidents were detected in the current UISP telemetry.</p></article>}
