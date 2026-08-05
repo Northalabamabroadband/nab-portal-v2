@@ -70,6 +70,8 @@ type TaucAssignment = {
 
 type TaucGatewaySnapshot = {
   device_id: string;
+  network_id?: string | null;
+  network_name?: string | null;
   status: "ready" | "partial";
   device: Record<string, unknown>;
   wifi: Record<string, unknown>;
@@ -288,8 +290,15 @@ function CustomerView({
   const [taucSnapshotBusy, setTaucSnapshotBusy] = useState(false);
   const [taucRefreshKey, setTaucRefreshKey] = useState(0);
   const gatewayDevice = data?.gateway?.device;
+  const gatewayNetwork = data?.gateway?.network;
   const gatewayDeviceId = String(
     gatewayDevice?.deviceId || gatewayDevice?.id || gatewayDevice?.device_id || ""
+  );
+  const gatewayNetworkId = String(
+    gatewayNetwork?.networkId || gatewayNetwork?.network_id || gatewayNetwork?.id || ""
+  );
+  const gatewayNetworkName = String(
+    gatewayNetwork?.networkName || gatewayNetwork?.network_name || gatewayNetwork?.name || ""
   );
 
   useEffect(() => {
@@ -312,8 +321,12 @@ function CustomerView({
     let active = true;
     setTaucSnapshotBusy(true);
     setTaucSnapshotError("");
+    const snapshotParameters = new URLSearchParams();
+    if (gatewayNetworkId) snapshotParameters.set("network_id", gatewayNetworkId);
+    if (gatewayNetworkName) snapshotParameters.set("network_name", gatewayNetworkName);
+    const snapshotQuery = snapshotParameters.toString();
     apiRequest<TaucGatewaySnapshot>(
-      `/tauc/devices/${encodeURIComponent(gatewayDeviceId)}/snapshot`,
+      `/tauc/devices/${encodeURIComponent(gatewayDeviceId)}/snapshot${snapshotQuery ? `?${snapshotQuery}` : ""}`,
       {},
       token
     )
@@ -331,7 +344,13 @@ function CustomerView({
         if (active) setTaucSnapshotBusy(false);
       });
     return () => { active = false; };
-  }, [gatewayDeviceId, token, taucRefreshKey]);
+  }, [
+    gatewayDeviceId,
+    gatewayNetworkId,
+    gatewayNetworkName,
+    token,
+    taucRefreshKey
+  ]);
 
 
   const runAction = async (label: string, path: string, body: Record<string, unknown> = {}) => {
