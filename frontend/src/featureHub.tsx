@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { request as load } from "./api";
 
 type Mode = "outages" | "network" | "field" | "reports" | "portal" | "admin" | "wifi";
 type Json = Record<string, any>;
@@ -16,22 +17,12 @@ const endpoint: Record<Mode, string> = {
 const title: Record<Mode, string> = {
   outages: "Outage Intelligence",
   network: "Network Topology & Performance",
-  field: "Technician Mobile Queue",
-  reports: "Operational Reporting",
+  field: "Ground Crew Mobile Queue",
+  reports: "Mission Reporting",
   portal: "Customer Portal",
   admin: "Roles, Permissions & Features",
-  wifi: "Managed Wi-Fi Control Center"
+  wifi: "Managed Wi-Fi Flight Controls"
 };
-
-async function load(path: string, token: string): Promise<Json> {
-  const response = await fetch(`/api/v2${path}`, {
-    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-    credentials: "include"
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.detail || `Request failed: ${response.status}`);
-  return payload;
-}
 
 function Value({ label, value }: { label: string; value: unknown }) {
   return <article><span>{label}</span><strong>{value == null ? "—" : String(value)}</strong></article>;
