@@ -3,6 +3,7 @@ from app.modules.alerts.router import router as alerts_router
 from fastapi import APIRouter
 
 from app.modules.auth.router import router as auth_router
+from app.modules.admin.router import router as admin_router
 from app.modules.billingcenter.router import router as billingcenter_router
 from app.modules.customer360.router import router as customer360_router
 from app.modules.customers.router import router as customers_router
@@ -23,5 +24,5 @@ from app.modules.uisp.router import router as uisp_router
 from app.modules.workorders.router import router as workorders_router
 
 router = APIRouter(prefix="/api/v2")
-for child in (auth_router, customers_router, customer_tauc_router, customer360_router, search_router, live_router, noc_router, uisp_router, tauc_router, tickets_router, workorders_router, inventory_router, operations_router, billingcenter_router, networkcenter_router, fiber_router, fibermap_router, integrations_router, platform_router, alerts_router, audit_router):
+for child in (auth_router, admin_router, customers_router, customer_tauc_router, customer360_router, search_router, live_router, noc_router, uisp_router, tauc_router, tickets_router, workorders_router, inventory_router, operations_router, billingcenter_router, networkcenter_router, fiber_router, fibermap_router, integrations_router, platform_router, alerts_router, audit_router):
     router.include_router(child)
