@@ -1,0 +1,31 @@
+export async function request<T>(
+  path: string,
+  token: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const response = await fetch(`/api/v2${path}`, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {})
+    },
+    credentials: "include"
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.detail || `Request failed: ${response.status}`);
+  }
+
+  return payload as T;
+}
+
+export function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string
+): Promise<T> {
+  return request<T>(path, token || "", options);
+}
