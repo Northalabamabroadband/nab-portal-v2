@@ -300,6 +300,12 @@ function CustomerView({
   const gatewayNetworkName = String(
     gatewayNetwork?.networkName || gatewayNetwork?.network_name || gatewayNetwork?.name || ""
   );
+  const gatewaySerialNumber = String(
+    gatewayDevice?.sn || gatewayDevice?.serialNumber || gatewayDevice?.serial_number || ""
+  );
+  const gatewayMacAddress = String(
+    gatewayDevice?.mac || gatewayDevice?.macAddress || gatewayDevice?.mac_address || ""
+  );
 
   useEffect(() => {
     setData(null);
@@ -324,6 +330,8 @@ function CustomerView({
     const snapshotParameters = new URLSearchParams();
     if (gatewayNetworkId) snapshotParameters.set("network_id", gatewayNetworkId);
     if (gatewayNetworkName) snapshotParameters.set("network_name", gatewayNetworkName);
+    if (gatewaySerialNumber) snapshotParameters.set("serial_number", gatewaySerialNumber);
+    if (gatewayMacAddress) snapshotParameters.set("mac_address", gatewayMacAddress);
     const snapshotQuery = snapshotParameters.toString();
     apiRequest<TaucGatewaySnapshot>(
       `/tauc/devices/${encodeURIComponent(gatewayDeviceId)}/snapshot${snapshotQuery ? `?${snapshotQuery}` : ""}`,
@@ -348,6 +356,8 @@ function CustomerView({
     gatewayDeviceId,
     gatewayNetworkId,
     gatewayNetworkName,
+    gatewaySerialNumber,
+    gatewayMacAddress,
     token,
     taucRefreshKey
   ]);
