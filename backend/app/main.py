@@ -1,3 +1,5 @@
+import asyncio
+
 from app.core.audit_middleware import AuditMiddleware
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +10,8 @@ from app.core.redis_client import redis_ready
 from app.core.settings import get_settings
 from app.modules.auth.service import bootstrap_identity
 from app.modules.desktop.router import router as desktop_router
+from app.modules.mikrotik.collector import collector
+from app.modules.mikrotik.fanout import fanout
 
 settings = get_settings()
 
@@ -38,10 +42,22 @@ app.include_router(desktop_router)
 
 
 @app.on_event("startup")
-def startup() -> None:
-    Base.metadata.create_all(bind=engine)
-    with SessionLocal() as session:
-        bootstrap_identity(session)
+async def startup() -> None:
+    def initialize_database() -> None:
+        Base.metadata.create_all(bind=engine)
+        with SessionLocal() as session:
+            bootstrap_identity(session)
+
+    await asyncio.to_thread(initialize_database)
+    fanout.start()
+    if settings.mikrotik_collector_enabled:
+        collector.start()
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await collector.stop()
+    await fanout.stop()
 
 
 @app.get("/health")
