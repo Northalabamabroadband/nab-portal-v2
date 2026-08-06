@@ -22,12 +22,185 @@ from app.modules.incidents.service import (
     incident_marker,
 )
 from app.modules.networkcenter.service import overview, topology
+from app.modules.uisp.client import UISPError
 
-router = APIRouter(prefix="/platform", tags=["platform-build028"])
+router = APIRouter(prefix="/platform", tags=["platform-build029"])
 
 
 class CustomerNoteCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+
+
+def _status_counts(
+    session: Session,
+    model: type[SupportTicket] | type[WorkOrder],
+) -> dict[str, int]:
+    return {
+        str(row[0]): int(row[1])
+        for row in session.execute(
+            select(model.status, func.count()).group_by(model.status)
+        ).all()
+    }
+
+
+@router.get("/mission-control")
+async def mission_control_overview(
+    claims: Annotated[dict, Depends(require_permission("command_post.view"))],
+    session: Annotated[Session, Depends(database_session)],
+) -> dict:
+    ticket_status = _status_counts(session, SupportTicket)
+    workorder_status = _status_counts(session, WorkOrder)
+    open_tickets = sum(
+        count for state, count in ticket_status.items()
+        if state not in {"closed", "resolved"}
+    )
+    active_workorders = sum(
+        count for state, count in workorder_status.items()
+        if state not in {"completed", "cancelled"}
+    )
+    low_stock = int(session.scalar(
+        select(func.count()).select_from(InventoryItem).where(
+            InventoryItem.quantity_on_hand <= InventoryItem.reorder_level
+        )
+    ) or 0)
+    unassigned_workorders = int(session.scalar(
+        select(func.count()).select_from(WorkOrder).where(
+            WorkOrder.status.not_in(["completed", "cancelled"]),
+            WorkOrder.assigned_technician.is_(None),
+        )
+    ) or 0)
+    unacknowledged_alerts = int(session.scalar(
+        select(func.count()).select_from(OperationalAlert).where(
+            OperationalAlert.acknowledged.is_(False)
+        )
+    ) or 0)
+    critical_alerts = int(session.scalar(
+        select(func.count()).select_from(OperationalAlert).where(
+            OperationalAlert.acknowledged.is_(False),
+            OperationalAlert.severity == "critical",
+        )
+    ) or 0)
+    tauc_assignments = int(session.scalar(
+        select(func.count()).select_from(CustomerTaucAssignment)
+    ) or 0)
+    managed_customers = int(session.scalar(
+        select(func.count(func.distinct(CustomerTaucAssignment.client_id)))
+    ) or 0)
+    managed_networks = int(session.scalar(
+        select(func.count(func.distinct(CustomerTaucAssignment.network_id)))
+        .where(CustomerTaucAssignment.network_id.is_not(None))
+    ) or 0)
+
+    network_error: str | None = None
+    try:
+        network = await overview(1000)
+    except UISPError as exc:
+        network_error = str(exc)
+        network = {
+            "summary": {
+                "devices_total": 0,
+                "devices_online": 0,
+                "devices_offline": 0,
+                "devices_warning": 0,
+                "devices_unknown": 0,
+                "sites_total": 0,
+                "active_alarms": 0,
+                "critical_alarms": 0,
+                "customers_affected": 0,
+            },
+            "devices": [],
+            "alarms": [],
+            "sites": [],
+        }
+
+    offline_alarms = [
+        alarm for alarm in network["alarms"]
+        if alarm["type"] == "device_offline"
+    ]
+    outages = build_outage_events(offline_alarms)
+
+    recent_activity: list[dict[str, object]] = []
+    recent_tickets = list(session.scalars(
+        select(SupportTicket)
+        .order_by(SupportTicket.created_at.desc())
+        .limit(5)
+    ).all())
+    recent_orders = list(session.scalars(
+        select(WorkOrder)
+        .order_by(WorkOrder.created_at.desc())
+        .limit(5)
+    ).all())
+    recent_alerts = list(session.scalars(
+        select(OperationalAlert)
+        .order_by(OperationalAlert.created_at.desc())
+        .limit(5)
+    ).all())
+    recent_activity.extend({
+        "id": row.id,
+        "kind": "ticket",
+        "title": row.subject,
+        "detail": f"{row.priority} priority support ticket",
+        "status": row.status,
+        "occurred_at": row.created_at,
+    } for row in recent_tickets)
+    recent_activity.extend({
+        "id": row.id,
+        "kind": "workorder",
+        "title": row.title,
+        "detail": row.service_address or "Field work order",
+        "status": row.status,
+        "occurred_at": row.created_at,
+    } for row in recent_orders)
+    recent_activity.extend({
+        "id": row.id,
+        "kind": "alert",
+        "title": row.title,
+        "detail": row.message,
+        "status": "acknowledged" if row.acknowledged else row.severity,
+        "occurred_at": row.created_at,
+    } for row in recent_alerts)
+    recent_activity.sort(
+        key=lambda item: item["occurred_at"] or datetime.min,
+        reverse=True,
+    )
+
+    if outages or critical_alerts:
+        mission_state = "critical"
+    elif network_error or unacknowledged_alerts or network["summary"]["devices_warning"]:
+        mission_state = "degraded"
+    else:
+        mission_state = "operational"
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mission_state": mission_state,
+        "summary": {
+            "active_outages": len(outages),
+            "customers_affected": sum(
+                event["customers_affected"] for event in outages
+            ),
+            "open_tickets": open_tickets,
+            "active_workorders": active_workorders,
+            "unacknowledged_alerts": unacknowledged_alerts,
+            "critical_alerts": critical_alerts,
+        },
+        "network": {
+            **network["summary"],
+            "error": network_error,
+        },
+        "operations": {
+            "tickets_by_status": ticket_status,
+            "workorders_by_status": workorder_status,
+            "low_stock_items": low_stock,
+            "unassigned_workorders": unassigned_workorders,
+        },
+        "managed_wifi": {
+            "customers": managed_customers,
+            "gateways": tauc_assignments,
+            "networks": managed_networks,
+        },
+        "recent_activity": recent_activity[:12],
+    }
 
 
 
@@ -417,7 +590,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build028",
+        "release": "2.0.0-rc1-build029",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -425,7 +598,7 @@ def capability_parity(
         "external_controls": [
             "UISP CRM remains authoritative for billing mutations.",
             "UISP NMS remains authoritative for network configuration.",
-            "MikroTik access is read-only in Build 028; router changes remain in RouterOS.",
+            "MikroTik access is read-only in Build 029; router changes remain in RouterOS.",
             "TAUC writes remain disabled until verified tenant paths are configured.",
             "Customer self-service remains gated on identity recovery and policy controls.",
         ],
@@ -437,7 +610,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build028",
+        "release": "2.0.0-rc1-build029",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -476,5 +649,8 @@ def admin_capabilities(
             "managed_wifi_operations": "fleet-clients-controls-and-diagnostics",
             "managed_wifi_control_responses": "secret-redacted",
             "managed_wifi_cache_invalidation": "after-successful-write",
+            "mission_control_overview": "consolidated-network-and-operations",
+            "customer_directory": "uisp-crm-authoritative",
+            "customer_directory_pagination": True,
         },
     }
