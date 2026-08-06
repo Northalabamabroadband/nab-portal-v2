@@ -23,7 +23,7 @@ from app.modules.tauc.client import TAUCClient
 from app.modules.tauc.router import cached_snapshot_polling_status
 from app.modules.uisp.client import UISPError
 
-router = APIRouter(prefix="/network-center", tags=["network-center-build032"])
+router = APIRouter(prefix="/network-center", tags=["network-center-build033"])
 settings = get_settings()
 
 
@@ -144,6 +144,11 @@ async def coordinated_device_polling(
             "signal": None,
             "latency": None,
             "packet_loss": None,
+            "uptime_seconds": None,
+            "rx_rate_bps": None,
+            "tx_rate_bps": None,
+            "last_seen_at": None,
+            "telemetry_fields": 0,
             "customer_count": 0,
             "interface_count": int(
                 router_status.get("interface_count") or 0
@@ -197,6 +202,11 @@ async def coordinated_device_polling(
             "signal": None,
             "latency": None,
             "packet_loss": None,
+            "uptime_seconds": None,
+            "rx_rate_bps": None,
+            "tx_rate_bps": None,
+            "last_seen_at": None,
+            "telemetry_fields": 0,
             "customer_count": int(
                 cached.get("connected_devices") or 0
             ),
@@ -297,6 +307,11 @@ async def coordinated_device_polling(
         else "unconfigured"
     )
     source_states = [uisp_state, mikrotik_state, tauc_state]
+    uisp_devices = uisp.get("devices", [])
+    uisp_telemetry_devices = sum(
+        int(device.get("telemetry_fields") or 0) > 0
+        for device in uisp_devices
+    )
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -332,6 +347,7 @@ async def coordinated_device_polling(
                 state == "online" for state in source_states
             ),
             "sources_total": len(source_states),
+            "devices_reporting_telemetry": uisp_telemetry_devices,
         },
         "sources": [
             {
@@ -339,13 +355,18 @@ async def coordinated_device_polling(
                 "name": "UISP NMS",
                 "state": uisp_state,
                 "mode": "Coalesced device cache",
-                "device_count": len(uisp.get("devices", [])),
+                "device_count": len(uisp_devices),
+                "telemetry_device_count": uisp_telemetry_devices,
                 "poll_interval_seconds": uisp_cache.get("ttl_seconds"),
                 "last_polled_at": uisp_cache.get("loaded_at"),
                 "cache_age_seconds": uisp_cache.get("age_seconds"),
                 "detail": (
                     errors.get("uisp")
-                    or "One upstream read serves all portal consumers."
+                    or (
+                        f"{uisp_telemetry_devices} of "
+                        f"{len(uisp_devices)} devices reporting live "
+                        "UISP NMS telemetry."
+                    )
                 ),
             },
             {

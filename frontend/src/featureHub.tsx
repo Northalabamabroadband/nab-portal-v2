@@ -54,7 +54,7 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
 
   return <section className="feature-hub">
     <header>
-      <div><p className="eyebrow">RC1 BUILD 032</p><h2>{title[mode]}</h2></div>
+      <div><p className="eyebrow">RC1 BUILD 033</p><h2>{title[mode]}</h2></div>
       <button onClick={refresh}>{working ? "Refreshing…" : "Refresh"}</button>
     </header>
     {error && <div className="error-message">{error}</div>}

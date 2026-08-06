@@ -146,7 +146,7 @@ def customer_capabilities() -> dict[str, object]:
         "tickets": True,
         "documents": True,
         "uisp_live_data": True,
-        "status": "rc1-build032",
+        "status": "rc1-build033",
     }
 
 
