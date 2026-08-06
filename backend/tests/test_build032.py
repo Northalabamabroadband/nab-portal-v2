@@ -110,7 +110,7 @@ def test_disabled_mikrotik_collector_does_not_create_false_outages(
 def test_build032_reports_portal_recovery_capabilities() -> None:
     capabilities = admin_capabilities({})
 
-    assert capabilities["release"] == "2.0.0-rc1-build032"
+    assert capabilities["release"] == "2.0.0-rc1-build033"
     assert capabilities["features"]["portal_render_recovery"] is True
     assert capabilities["features"]["portal_saved_session_validation"] is True
     assert (

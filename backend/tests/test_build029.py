@@ -45,7 +45,7 @@ def test_customer_directory_normalization_is_safe_and_predictable() -> None:
 
 def test_build029_reports_customer_directory_and_mission_control() -> None:
     capabilities = admin_capabilities({})
-    assert capabilities["release"] == "2.0.0-rc1-build032"
+    assert capabilities["release"] == "2.0.0-rc1-build033"
     assert capabilities["features"]["mission_control_overview"] == (
         "consolidated-network-and-operations"
     )

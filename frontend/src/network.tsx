@@ -23,6 +23,11 @@ type Device = {
   signal?: number | null;
   latency?: number | null;
   packet_loss?: number | null;
+  uptime_seconds?: number | null;
+  rx_rate_bps?: number | null;
+  tx_rate_bps?: number | null;
+  last_seen_at?: string | null;
+  telemetry_fields?: number;
   customer_count: number;
   interface_count?: number;
   client_id?: string;
@@ -61,6 +66,7 @@ type PollSource = {
   last_polled_at?: string | null;
   cache_age_seconds?: number | null;
   cached_devices?: number;
+  telemetry_device_count?: number;
   detail: string;
 };
 
@@ -80,6 +86,7 @@ type PollingOverview = {
     customers_affected: number;
     sources_healthy: number;
     sources_total: number;
+    devices_reporting_telemetry: number;
   };
   sources: PollSource[];
   devices: Device[];
@@ -215,10 +222,10 @@ export function NetworkOperationsCenter({ token }: { token: string }) {
     <section className="noc-center coordinated-noc">
       <div className="noc-header">
         <div>
-          <p className="eyebrow">NETWORK OPERATIONS · RC1 BUILD 032</p>
+          <p className="eyebrow">NETWORK OPERATIONS · RC1 BUILD 033</p>
           <h2>Unified Device Polling</h2>
           <p>
-            UISP NMS device telemetry, MikroTik collector state, and
+            Live UISP NMS device metrics, MikroTik collector state, and
             rate-limit-safe TAUC gateway snapshots in one coordinated view.
           </p>
         </div>
@@ -247,7 +254,7 @@ export function NetworkOperationsCenter({ token }: { token: string }) {
         <article><span>All devices</span><strong>{data?.summary.devices_total ?? 0}</strong><small>Three source inventory</small></article>
         <article><span>Online</span><strong>{data?.summary.devices_online ?? 0}</strong><small>Current or fresh cached state</small></article>
         <article><span>Offline</span><strong>{data?.summary.devices_offline ?? 0}</strong><small>Confirmed unavailable</small></article>
-        <article><span>Warning / unknown</span><strong>{(data?.summary.devices_warning ?? 0) + (data?.summary.devices_unknown ?? 0)}</strong><small>Needs current telemetry</small></article>
+        <article><span>UISP telemetry</span><strong>{data?.summary.devices_reporting_telemetry ?? 0}</strong><small>Devices reporting live metrics</small></article>
         <article><span>Active alarms</span><strong>{data?.summary.active_alarms ?? 0}</strong><small>{data?.summary.critical_alarms ?? 0} critical</small></article>
         <article><span>Polling sources</span><strong>{data?.summary.sources_healthy ?? 0}/{data?.summary.sources_total ?? 3}</strong><small>Healthy collectors</small></article>
       </div>
@@ -313,11 +320,12 @@ export function NetworkOperationsCenter({ token }: { token: string }) {
                 <th>Device</th>
                 <th>Site / Network</th>
                 <th>Identity</th>
-                <th>Last poll</th>
-                <th>CPU</th>
-                <th>Memory</th>
-                <th>Latency</th>
-                <th>Loss</th>
+                <th>Last seen</th>
+                <th>CPU / RAM</th>
+                <th>Signal / Temp</th>
+                <th>Latency / Loss</th>
+                <th>Traffic</th>
+                <th>Uptime</th>
                 <th>Impact / Clients</th>
               </tr>
             </thead>
@@ -336,13 +344,30 @@ export function NetworkOperationsCenter({ token }: { token: string }) {
                     {device.firmware && <small>Firmware {device.firmware}</small>}
                   </td>
                   <td>
-                    <span>{pollAge(device.last_polled_at)}</span>
-                    <small>{display(device.poll_mode)}</small>
+                    <span>{pollAge(device.last_seen_at || device.last_polled_at)}</span>
+                    <small>
+                      {device.last_seen_at
+                        ? "UISP device report"
+                        : display(device.poll_mode)}
+                    </small>
                   </td>
-                  <td>{metric(device.cpu, "%")}</td>
-                  <td>{metric(device.memory, "%")}</td>
-                  <td>{metric(device.latency, " ms")}</td>
-                  <td>{metric(device.packet_loss, "%")}</td>
+                  <td>
+                    <span>{metric(device.cpu, "%")}</span>
+                    <small>RAM {metric(device.memory, "%")}</small>
+                  </td>
+                  <td>
+                    <span>{metric(device.signal, " dBm")}</span>
+                    <small>Temp {metric(device.temperature, "°")}</small>
+                  </td>
+                  <td>
+                    <span>{metric(device.latency, " ms")}</span>
+                    <small>Loss {metric(device.packet_loss, "%")}</small>
+                  </td>
+                  <td>
+                    <span>↓ {formatBitrate(device.rx_rate_bps)}</span>
+                    <small>↑ {formatBitrate(device.tx_rate_bps)}</small>
+                  </td>
+                  <td>{formatUptime(device.uptime_seconds)}</td>
                   <td>{device.customer_count}</td>
                 </tr>
               ))}
@@ -389,6 +414,7 @@ export function NetworkOperationsCenter({ token }: { token: string }) {
                 <div><dt>Last update</dt><dd>{pollAge(source.last_polled_at)}</dd></div>
                 {source.cache_age_seconds !== undefined && source.cache_age_seconds !== null && <div><dt>Cache age</dt><dd>{metric(Math.round(source.cache_age_seconds), " sec")}</dd></div>}
                 {source.cached_devices !== undefined && <div><dt>Fresh snapshots</dt><dd>{source.cached_devices}</dd></div>}
+                {source.telemetry_device_count !== undefined && <div><dt>Live telemetry</dt><dd>{source.telemetry_device_count}/{source.device_count}</dd></div>}
               </dl>
               <p>{source.detail}</p>
               {source.id === "tauc" && (
@@ -448,6 +474,9 @@ function normalizePollingOverview(value: unknown): PollingOverview {
       customers_affected: numberValue(summary.customers_affected),
       sources_healthy: numberValue(summary.sources_healthy),
       sources_total: numberValue(summary.sources_total, 3),
+      devices_reporting_telemetry: numberValue(
+        summary.devices_reporting_telemetry,
+      ),
     },
     sources: Array.isArray(value.sources)
       ? value.sources.filter(isRecord).map(normalizeSource)
@@ -476,6 +505,8 @@ function normalizeSource(source: Record<string, unknown>): PollSource {
     last_polled_at: optionalText(source.last_polled_at),
     cache_age_seconds: optionalNumber(source.cache_age_seconds),
     cached_devices: optionalNumber(source.cached_devices) ?? undefined,
+    telemetry_device_count:
+      optionalNumber(source.telemetry_device_count) ?? undefined,
     detail: textValue(source.detail, "Polling status unavailable."),
   };
 }
@@ -501,6 +532,11 @@ function normalizeDevice(device: Record<string, unknown>): Device {
     signal: optionalNumber(device.signal),
     latency: optionalNumber(device.latency),
     packet_loss: optionalNumber(device.packet_loss),
+    uptime_seconds: optionalNumber(device.uptime_seconds),
+    rx_rate_bps: optionalNumber(device.rx_rate_bps),
+    tx_rate_bps: optionalNumber(device.tx_rate_bps),
+    last_seen_at: optionalText(device.last_seen_at),
+    telemetry_fields: optionalNumber(device.telemetry_fields) ?? undefined,
     customer_count: numberValue(device.customer_count),
     interface_count: optionalNumber(device.interface_count) ?? undefined,
     client_id: optionalText(device.client_id) ?? undefined,
@@ -600,4 +636,30 @@ function pollAge(value?: string | null) {
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.round(minutes / 60);
   return `${hours}h ago`;
+}
+
+function formatBitrate(value?: number | null) {
+  if (value === undefined || value === null) return "—";
+  const absolute = Math.abs(value);
+  if (absolute >= 1_000_000_000) {
+    return `${(value / 1_000_000_000).toFixed(1)} Gbps`;
+  }
+  if (absolute >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)} Mbps`;
+  }
+  if (absolute >= 1_000) {
+    return `${(value / 1_000).toFixed(1)} Kbps`;
+  }
+  return `${Math.round(value)} bps`;
+}
+
+function formatUptime(value?: number | null) {
+  if (value === undefined || value === null) return "—";
+  const seconds = Math.max(0, Math.round(value));
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }

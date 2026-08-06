@@ -27,7 +27,7 @@ def test_build031_registers_coordinated_polling() -> None:
     assert "/api/v2/network-center/polling" in paths
 
     capabilities = admin_capabilities({})
-    assert capabilities["release"] == "2.0.0-rc1-build032"
+    assert capabilities["release"] == "2.0.0-rc1-build033"
     assert capabilities["features"]["network_uisp_poll_coalescing"] is True
     assert capabilities["features"]["network_tauc_polling"] == (
         "rate-limit-safe-no-additional-cloud-requests"
