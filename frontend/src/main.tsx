@@ -405,6 +405,7 @@ function CustomerView({
 
   const device = data.gateway?.device || {};
   const network = data.gateway?.network || {};
+  const deviceId = String(device.deviceId || device.id || device.device_id || "");
 
   return (
     <section className="customer360-shell">
