@@ -59,3 +59,18 @@ and observed infrastructure neighbors. **Systems Check** also reports the MikroT
 
 Build 025 intentionally has no router mutation endpoints. Configuration changes,
 reboots, firewall operations, and package updates remain RouterOS-only.
+
+## Live interface throughput
+
+RC1 Build 026 adds a read-only `GET /api/v2/mikrotik/throughput`
+counter-sampling endpoint and two live charts at the bottom of **MikroTik NOC**.
+Operators select up to six interfaces in the existing interface table. The
+browser polls every three seconds, derives bits per second from RouterOS RX/TX
+byte-counter deltas, handles counter resets without showing negative traffic,
+and retains a bounded six-minute rolling window.
+
+The two charts show receive and transmit throughput separately. Sampling pauses
+while the browser tab is hidden and resumes with a fresh baseline. No RouterOS
+configuration command is executed, no persistent telemetry duplicate is
+created, and the endpoint remains protected by the existing internal
+`network.read` permission.
