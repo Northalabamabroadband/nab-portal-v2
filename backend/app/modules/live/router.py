@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.modules.auth.dependencies import require_permission
 from app.modules.live.manager import manager
-from app.modules.mikrotik.client import MikroTikClient
+from app.modules.mikrotik.collector import collector
 from app.modules.tauc.client import TAUCClient
 from app.modules.uisp.client import UISPClient
 
@@ -22,13 +22,27 @@ async def live_summary(
 ) -> dict:
     uisp = UISPClient()
     tauc = TAUCClient()
-    mikrotik = MikroTikClient()
-
-    uisp_status, tauc_status, mikrotik_status = await asyncio.gather(
+    uisp_status, tauc_status, mikrotik_fleet = await asyncio.gather(
         uisp.connection_status(),
         tauc.connection_status(),
-        mikrotik.connection_status(),
+        collector.fleet_status(),
     )
+    routers = mikrotik_fleet.get("routers", [])
+    configured_routers = [row for row in routers if row.get("configured")]
+    connected_routers = [row for row in routers if row.get("connected")]
+    mikrotik_status = {
+        "service": "mikrotik",
+        "configured": bool(configured_routers),
+        "connected": bool(connected_routers),
+        "identity": (
+            f"{len(connected_routers)} of {len(configured_routers)} routers live"
+            if configured_routers
+            else None
+        ),
+        "detail": mikrotik_fleet.get("collector", {}).get("detail"),
+        "collector": mikrotik_fleet.get("collector", {}),
+        "routers": routers,
+    }
 
     return {
         "status": (
