@@ -23,7 +23,7 @@ from app.modules.incidents.service import (
 )
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build024"])
+router = APIRouter(prefix="/platform", tags=["platform-build025"])
 
 
 class CustomerNoteCreate(BaseModel):
@@ -407,6 +407,7 @@ def capability_parity(
         {"domain": "Work orders and dispatch", "read": True, "write": True, "source": "V2 shared operations"},
         {"domain": "Inventory", "read": True, "write": True, "source": "V2 shared operations"},
         {"domain": "Network telemetry", "read": True, "write": False, "source": "UISP NMS authoritative"},
+        {"domain": "Core routing infrastructure", "read": True, "write": False, "source": "MikroTik RouterOS REST · internal NOC only"},
         {"domain": "Outages and incidents", "read": True, "write": True, "source": "UISP NMS + response dispatch"},
         {"domain": "Fiber assets and mapping", "read": True, "write": True, "source": "V2 fiber services"},
         {"domain": "Managed Wi-Fi", "read": True, "write": "configuration-gated", "source": "TAUC"},
@@ -415,7 +416,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build024",
+        "release": "2.0.0-rc1-build025",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -423,6 +424,7 @@ def capability_parity(
         "external_controls": [
             "UISP CRM remains authoritative for billing mutations.",
             "UISP NMS remains authoritative for network configuration.",
+            "MikroTik access is read-only in Build 025; router changes remain in RouterOS.",
             "TAUC writes remain disabled until verified tenant paths are configured.",
             "Customer self-service remains gated on identity recovery and policy controls.",
         ],
@@ -434,7 +436,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build024",
+        "release": "2.0.0-rc1-build025",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -447,6 +449,10 @@ def admin_capabilities(
             "tauc_controls": "configuration-gated",
             "crm_workflows": True,
             "network_topology": True,
+            "mikrotik_routeros": "read-only-inventory-and-clients",
+            "mikrotik_tls": "verified-by-default-with-private-ca-support",
+            "mikrotik_network_neighbors": "dhcp-and-arp-merged",
+            "mikrotik_customer_assignment": False,
             "field_operations": True,
             "customer_portal": "admin-preview",
             "reporting": True,
