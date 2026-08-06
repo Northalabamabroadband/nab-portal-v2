@@ -475,7 +475,7 @@ function normalizeSource(source: Record<string, unknown>): PollSource {
     poll_interval_seconds: optionalNumber(source.poll_interval_seconds),
     last_polled_at: optionalText(source.last_polled_at),
     cache_age_seconds: optionalNumber(source.cache_age_seconds),
-    cached_devices: optionalNumber(source.cached_devices),
+    cached_devices: optionalNumber(source.cached_devices) ?? undefined,
     detail: textValue(source.detail, "Polling status unavailable."),
   };
 }
