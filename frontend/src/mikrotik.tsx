@@ -2,12 +2,16 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState
 } from "react";
 import { request } from "./api";
 
 type RouterStatus = {
+  key: string;
+  name: string;
+  site: string;
+  role: string;
+  enabled: boolean;
   configured: boolean;
   connected: boolean;
   base_url?: string | null;
@@ -15,7 +19,21 @@ type RouterStatus = {
   detail?: string;
   tls_verification: boolean;
   ca_certificate_configured: boolean;
-  mode: string;
+  poll_interval_seconds: number;
+  last_attempt_at?: string | null;
+  last_seen?: string | null;
+  interface_count?: number | null;
+};
+
+type FleetResponse = {
+  generated_at: string;
+  collector: {
+    enabled: boolean;
+    running: boolean;
+    leader: boolean;
+    detail: string;
+  };
+  routers: RouterStatus[];
 };
 
 type RouterSnapshot = {
@@ -48,22 +66,13 @@ type RouterSnapshot = {
   warnings: string[];
 };
 
-type ThroughputCounter = {
-  id: string;
-  name: string;
-  running: boolean;
-  disabled: boolean;
-  rx_bytes: number;
-  tx_bytes: number;
-};
-
-type ThroughputResponse = {
+type ThroughputHistoryResponse = {
   generated_at: string;
+  router_key: string;
   poll_interval_seconds: number;
   mode: string;
-  count: number;
-  interfaces: ThroughputCounter[];
-  missing: string[];
+  samples: CollectorSample[];
+  rollups: unknown[];
 };
 
 type InterfaceRate = {
@@ -76,12 +85,12 @@ type RatePoint = {
   rates: Record<string, InterfaceRate>;
 };
 
-type PreviousCounters = {
-  timestamp: number;
-  counters: Record<string, { rx: number; tx: number }>;
+type CollectorSample = {
+  timestamp: string;
+  timestamp_ms: number;
+  rates: Record<string, InterfaceRate>;
 };
 
-const THROUGHPUT_POLL_MS = 3000;
 const MAX_THROUGHPUT_POINTS = 120;
 const MAX_SELECTED_INTERFACES = 6;
 const CHART_COLORS = [
@@ -288,6 +297,8 @@ function ThroughputChart({
 }
 
 export function MikroTikOperations({ token }: { token: string }) {
+  const [fleet, setFleet] = useState<FleetResponse | null>(null);
+  const [selectedRouterKey, setSelectedRouterKey] = useState("");
   const [status, setStatus] = useState<RouterStatus | null>(null);
   const [snapshot, setSnapshot] = useState<RouterSnapshot | null>(null);
   const [working, setWorking] = useState(true);
@@ -295,27 +306,48 @@ export function MikroTikOperations({ token }: { token: string }) {
   const [selectedInterfaces, setSelectedInterfaces] = useState<string[]>([]);
   const [throughputHistory, setThroughputHistory] = useState<RatePoint[]>([]);
   const [throughputError, setThroughputError] = useState("");
-  const [throughputWorking, setThroughputWorking] = useState(false);
+  const [streamConnected, setStreamConnected] = useState(false);
   const [throughputUpdatedAt, setThroughputUpdatedAt] = useState<number | null>(null);
-  const previousCounters = useRef<PreviousCounters | null>(null);
-  const throughputRequestActive = useRef(false);
 
-  const refresh = useCallback(async () => {
-    setWorking(true);
-    setError("");
+  const loadFleet = useCallback(async () => {
     try {
-      const nextStatus = await request<RouterStatus>("/mikrotik/status", token);
-      setStatus(nextStatus);
-      if (nextStatus.configured) {
-        setSnapshot(await request<RouterSnapshot>("/mikrotik/snapshot", token));
-      } else {
-        setSnapshot(null);
-      }
+      const nextFleet = await request<FleetResponse>("/mikrotik/fleet", token);
+      setFleet(nextFleet);
+      setSelectedRouterKey(current => {
+        if (nextFleet.routers.some(router => router.key === current)) return current;
+        return (
+          nextFleet.routers.find(router => router.connected)?.key ||
+          nextFleet.routers.find(router => router.configured)?.key ||
+          nextFleet.routers[0]?.key ||
+          ""
+        );
+      });
+      if (!nextFleet.routers.length) setWorking(false);
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : "Unable to load MikroTik RouterOS"
+          : "Unable to load the MikroTik fleet"
+      );
+      setWorking(false);
+    }
+  }, [token]);
+
+  const loadSnapshot = useCallback(async (routerKey: string) => {
+    if (!routerKey) return;
+    setWorking(true);
+    setError("");
+    try {
+      setSnapshot(await request<RouterSnapshot>(
+        `/mikrotik/routers/${encodeURIComponent(routerKey)}/snapshot`,
+        token
+      ));
+    } catch (caught) {
+      setSnapshot(null);
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to load MikroTik RouterOS inventory"
       );
     } finally {
       setWorking(false);
@@ -323,8 +355,20 @@ export function MikroTikOperations({ token }: { token: string }) {
   }, [token]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void loadFleet();
+    const interval = window.setInterval(() => void loadFleet(), 15000);
+    return () => window.clearInterval(interval);
+  }, [loadFleet]);
+
+  useEffect(() => {
+    const selected = fleet?.routers.find(router => router.key === selectedRouterKey);
+    setStatus(selected || null);
+  }, [fleet, selectedRouterKey]);
+
+  useEffect(() => {
+    setSnapshot(null);
+    if (selectedRouterKey) void loadSnapshot(selectedRouterKey);
+  }, [loadSnapshot, selectedRouterKey]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -345,94 +389,98 @@ export function MikroTikOperations({ token }: { token: string }) {
     });
   }, [snapshot]);
 
-  const pollThroughput = useCallback(async () => {
-    if (
-      !selectedInterfaces.length ||
-      document.hidden ||
-      throughputRequestActive.current
-    ) {
-      return;
-    }
-    throughputRequestActive.current = true;
-    setThroughputWorking(true);
-    try {
-      const query = new URLSearchParams();
-      selectedInterfaces.forEach(name => query.append("interface", name));
-      const sample = await request<ThroughputResponse>(
-        `/mikrotik/throughput?${query.toString()}`,
-        token
-      );
-      const timestamp = Date.parse(sample.generated_at) || Date.now();
-      const counters = Object.fromEntries(
-        sample.interfaces.map(row => [
-          row.name,
-          { rx: Number(row.rx_bytes), tx: Number(row.tx_bytes) }
-        ])
-      );
-      const previous = previousCounters.current;
-
-      if (previous && timestamp > previous.timestamp) {
-        const elapsedSeconds = (timestamp - previous.timestamp) / 1000;
-        const rates: Record<string, InterfaceRate> = {};
-        for (const row of sample.interfaces) {
-          const old = previous.counters[row.name];
-          if (!old) continue;
-          const rxDelta = row.rx_bytes - old.rx;
-          const txDelta = row.tx_bytes - old.tx;
-          rates[row.name] = {
-            rx: rxDelta >= 0 ? (rxDelta * 8) / elapsedSeconds : 0,
-            tx: txDelta >= 0 ? (txDelta * 8) / elapsedSeconds : 0
-          };
-        }
-        setThroughputHistory(current => [
-          ...current,
-          { timestamp, rates }
-        ].slice(-MAX_THROUGHPUT_POINTS));
-      }
-
-      previousCounters.current = { timestamp, counters };
-      setThroughputUpdatedAt(timestamp);
-      setThroughputError(
-        sample.missing.length
-          ? `RouterOS did not return: ${sample.missing.join(", ")}`
-          : ""
-      );
-    } catch (caught) {
-      setThroughputError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to poll live interface throughput"
-      );
-    } finally {
-      throughputRequestActive.current = false;
-      setThroughputWorking(false);
-    }
-  }, [selectedInterfaces, token]);
-
   useEffect(() => {
-    previousCounters.current = null;
     setThroughputHistory([]);
     setThroughputError("");
     setThroughputUpdatedAt(null);
-    if (!selectedInterfaces.length || !status?.connected) return;
+    setStreamConnected(false);
+    if (!selectedRouterKey) return;
 
-    void pollThroughput();
-    const interval = window.setInterval(
-      () => void pollThroughput(),
-      THROUGHPUT_POLL_MS
-    );
-    const resumeWhenVisible = () => {
-      if (!document.hidden) {
-        previousCounters.current = null;
-        void pollThroughput();
+    let stopped = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+
+    const appendSample = (sample: CollectorSample) => {
+      const timestamp = Number(sample.timestamp_ms) || Date.parse(sample.timestamp);
+      if (!Number.isFinite(timestamp)) return;
+      setThroughputHistory(current => {
+        const next = current.filter(point => point.timestamp !== timestamp);
+        next.push({ timestamp, rates: sample.rates || {} });
+        next.sort((left, right) => left.timestamp - right.timestamp);
+        return next.slice(-MAX_THROUGHPUT_POINTS);
+      });
+      setThroughputUpdatedAt(timestamp);
+    };
+
+    void request<ThroughputHistoryResponse>(
+      `/mikrotik/routers/${encodeURIComponent(selectedRouterKey)}/history`,
+      token
+    ).then(history => {
+      if (stopped) return;
+      setThroughputHistory(history.samples.map(sample => ({
+        timestamp: Number(sample.timestamp_ms) || Date.parse(sample.timestamp),
+        rates: sample.rates || {}
+      })).filter(point => Number.isFinite(point.timestamp)).slice(-MAX_THROUGHPUT_POINTS));
+      const latest = history.samples[history.samples.length - 1];
+      if (latest) {
+        setThroughputUpdatedAt(
+          Number(latest.timestamp_ms) || Date.parse(latest.timestamp)
+        );
       }
+    }).catch(caught => {
+      if (!stopped) {
+        setThroughputError(
+          caught instanceof Error ? caught.message : "Collector history unavailable"
+        );
+      }
+    });
+
+    const connect = () => {
+      if (stopped) return;
+      const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+      socket = new WebSocket(
+        `${scheme}://${window.location.host}/api/v2/live/ws`
+      );
+      socket.onopen = () => {
+        setStreamConnected(true);
+        setThroughputError("");
+        socket?.send("subscribe");
+      };
+      socket.onmessage = event => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (
+            payload.type === "mikrotik.throughput" &&
+            payload.router_key === selectedRouterKey &&
+            payload.sample
+          ) {
+            appendSample(payload.sample as CollectorSample);
+          }
+        } catch {
+          // Ignore non-JSON live messages.
+        }
+      };
+      socket.onerror = () => {
+        setThroughputError("Live collector stream is reconnecting");
+      };
+      socket.onclose = () => {
+        setStreamConnected(false);
+        if (!stopped) reconnectTimer = window.setTimeout(connect, 2000);
+      };
     };
-    document.addEventListener("visibilitychange", resumeWhenVisible);
+    connect();
+
     return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", resumeWhenVisible);
+      stopped = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
     };
-  }, [pollThroughput, selectedInterfaces, status?.connected]);
+  }, [selectedRouterKey, token]);
+
+  const refresh = async () => {
+    await loadFleet();
+    if (selectedRouterKey) await loadSnapshot(selectedRouterKey);
+  };
 
   const toggleInterface = (name: string) => {
     setSelectedInterfaces(current => {
@@ -448,12 +496,12 @@ export function MikroTikOperations({ token }: { token: string }) {
     <section className="mikrotik-center">
       <header className="mikrotik-header">
         <div>
-          <p className="eyebrow">NETWORK INFRASTRUCTURE · NOC ONLY · RC1 BUILD 026</p>
-          <h2>MikroTik RouterOS Infrastructure</h2>
+          <p className="eyebrow">NETWORK INFRASTRUCTURE · NOC ONLY · RC1 BUILD 027</p>
+          <h2>MikroTik RouterOS Fleet</h2>
           <p>
-            Internal core, tower, POP, and backhaul-edge router health. This
-            module is isolated from Customer 360, subscriber Wi-Fi, and customer
-            equipment assignments.
+            Centralized telemetry for core, tower, POP, and backhaul-edge routers.
+            One backend collector polls each router and distributes the same live
+            samples to every NOC operator.
           </p>
         </div>
         <div className="mikrotik-header-actions">
@@ -468,24 +516,90 @@ export function MikroTikOperations({ token }: { token: string }) {
                 : "Configuration required"}
           </span>
           <button onClick={() => void refresh()} disabled={working}>
-            {working ? "Polling RouterOS…" : "Refresh telemetry"}
+            {working ? "Refreshing RouterOS…" : "Refresh selected router"}
           </button>
         </div>
       </header>
 
       {error && <div className="error-message">{error}</div>}
 
+      {fleet && (
+        <section className="mikrotik-fleet">
+          <div className="mikrotik-panel-heading">
+            <div>
+              <p className="eyebrow">ROUTER FLEET</p>
+              <h3>Infrastructure sites</h3>
+              <p>
+                {fleet.collector.detail}
+              </p>
+            </div>
+            <span className={
+              fleet.collector.running
+                ? "throughput-live"
+                : "throughput-live failed"
+            }>
+              <i />
+              {fleet.collector.leader
+                ? "Collector leader"
+                : fleet.collector.running
+                  ? "Collector standby"
+                  : "Collector stopped"}
+            </span>
+          </div>
+          <div className="mikrotik-fleet-grid">
+            {fleet.routers.map(router => (
+              <button
+                key={router.key}
+                className={
+                  "mikrotik-router-card " +
+                  (router.key === selectedRouterKey ? "selected " : "") +
+                  (router.connected ? "online" : "")
+                }
+                onClick={() => setSelectedRouterKey(router.key)}
+              >
+                <span className={
+                  "neighbor-beacon " + (router.connected ? "online" : "offline")
+                } />
+                <span>
+                  <strong>{router.name}</strong>
+                  <small>
+                    {[router.site, router.role].filter(Boolean).join(" · ") ||
+                      router.key}
+                  </small>
+                </span>
+                <em>{router.connected ? "Live" : router.enabled ? "Offline" : "Disabled"}</em>
+              </button>
+            ))}
+            {!fleet.routers.length && (
+              <p className="muted">No MikroTik router profiles are configured.</p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {fleet && !fleet.routers.length && (
+        <article className="mikrotik-setup">
+          <p className="eyebrow">SECURE FLEET ACTIVATION</p>
+          <h3>Add the mounted MikroTik routers secret</h3>
+          <p>
+            Create <code>secrets/mikrotik/routers.json</code> on the server. The
+            file is mounted read-only into the API container and must never be
+            committed.
+          </p>
+        </article>
+      )}
+
       {status && !status.configured && (
         <article className="mikrotik-setup">
           <p className="eyebrow">SECURE ACTIVATION</p>
-          <h3>Connect the NOC to a RouterOS v7 infrastructure router</h3>
+          <h3>Connect {status.name} to RouterOS v7</h3>
           <p>
-            Add the variables below to the deployed server&apos;s private .env file.
-            Use a dedicated infrastructure-monitoring account limited to read and
-            REST API access. This does not assign routers to customer records.
+            Add this router to the server&apos;s private routers file, or keep using
+            the legacy single-router environment variables. Use a dedicated
+            read-only REST account.
           </p>
           <code>
-            MIKROTIK_BASE_URL · MIKROTIK_USERNAME · MIKROTIK_PASSWORD
+            MIKROTIK_ROUTERS_FILE=/run/secrets/mikrotik/routers.json
           </code>
           <small>
             TLS verification is enabled by default. Credentials are never returned
@@ -719,18 +833,16 @@ export function MikroTikOperations({ token }: { token: string }) {
                 <p className="eyebrow">LIVE PORT THROUGHPUT</p>
                 <h3>Selected interface traffic</h3>
                 <p>
-                  Three-second read-only counter sampling · six-minute rolling window
+                  Server-side sampling · Redis live history · PostgreSQL minute rollups
                 </p>
               </div>
               <span className={throughputError ? "throughput-live failed" : "throughput-live"}>
                 <i />
                 {throughputError
-                  ? "Polling issue"
-                  : throughputWorking
-                    ? "Polling"
-                    : selectedInterfaces.length
-                      ? "Live"
-                      : "Select ports"}
+                  ? "Stream issue"
+                  : streamConnected
+                    ? "Live fan-out"
+                    : "Connecting"}
               </span>
             </div>
 
@@ -774,6 +886,7 @@ export function MikroTikOperations({ token }: { token: string }) {
             <span>Internal NOC only</span>
             <span>Read-only · no customer assignments</span>
             <span>HTTP Basic credentials protected by TLS</span>
+            <span>One fleet collector · no per-browser router polling</span>
             <span>
               Last inventory poll {new Date(snapshot.generated_at).toLocaleString()}
             </span>
