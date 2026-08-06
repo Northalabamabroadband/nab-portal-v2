@@ -24,7 +24,7 @@ from app.modules.incidents.service import (
 from app.modules.networkcenter.service import overview, topology
 from app.modules.uisp.client import UISPError
 
-router = APIRouter(prefix="/platform", tags=["platform-build031"])
+router = APIRouter(prefix="/platform", tags=["platform-build032"])
 
 
 class CustomerNoteCreate(BaseModel):
@@ -38,6 +38,14 @@ def incident_command_state(
     if network_error and mission_state == "nominal":
         return "degraded"
     return mission_state
+
+
+def network_polling_error(network: dict) -> str | None:
+    cache = network.get("cache")
+    if not isinstance(cache, dict):
+        return None
+    error = cache.get("last_error")
+    return str(error) if error else None
 
 
 def _status_counts(
@@ -121,6 +129,8 @@ async def mission_control_overview(
             "alarms": [],
             "sites": [],
         }
+    else:
+        network_error = network_polling_error(network)
 
     offline_alarms = [
         alarm for alarm in network["alarms"]
@@ -245,6 +255,8 @@ async def incident_command(
     except UISPError as exc:
         network_error = str(exc)
         network = {"summary": {}, "devices": [], "alarms": [], "sites": []}
+    else:
+        network_error = network_polling_error(network)
     alerts = list(session.scalars(
         select(OperationalAlert)
         .where(OperationalAlert.acknowledged.is_(False))
@@ -615,7 +627,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build031",
+        "release": "2.0.0-rc1-build032",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -623,7 +635,7 @@ def capability_parity(
         "external_controls": [
             "UISP CRM remains authoritative for billing mutations.",
             "UISP NMS remains authoritative for network configuration.",
-            "MikroTik access is read-only in Build 031; router changes remain in RouterOS.",
+            "MikroTik access is read-only in Build 032; router changes remain in RouterOS.",
             "TAUC writes remain disabled until verified tenant paths are configured.",
             "Customer self-service remains gated on identity recovery and policy controls.",
         ],
@@ -635,7 +647,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build031",
+        "release": "2.0.0-rc1-build032",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -685,6 +697,9 @@ def admin_capabilities(
             "network_uisp_poll_coalescing": True,
             "network_tauc_polling": "rate-limit-safe-no-additional-cloud-requests",
             "network_dashboard_visibility_pause": True,
+            "portal_render_recovery": True,
+            "portal_saved_session_validation": True,
+            "network_polling_response_validation": True,
             "network_telemetry_navigation": False,
         },
     }

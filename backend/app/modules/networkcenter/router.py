@@ -23,7 +23,7 @@ from app.modules.tauc.client import TAUCClient
 from app.modules.tauc.router import cached_snapshot_polling_status
 from app.modules.uisp.client import UISPError
 
-router = APIRouter(prefix="/network-center", tags=["network-center-build031"])
+router = APIRouter(prefix="/network-center", tags=["network-center-build032"])
 settings = get_settings()
 
 
@@ -74,6 +74,12 @@ async def coordinated_device_polling(
         }
     else:
         mikrotik = mikrotik_result
+    mikrotik_collector_enabled = bool(
+        mikrotik.get("collector", {}).get(
+            "enabled",
+            settings.mikrotik_collector_enabled,
+        )
+    )
 
     if isinstance(tauc_cache_result, Exception):
         errors["tauc"] = str(tauc_cache_result)
@@ -119,7 +125,11 @@ async def coordinated_device_polling(
                 "online"
                 if connected
                 else "offline"
-                if enabled and router_status.get("configured")
+                if (
+                    mikrotik_collector_enabled
+                    and enabled
+                    and router_status.get("configured")
+                )
                 else "unknown"
             ),
             "site_name": str(
@@ -224,7 +234,8 @@ async def coordinated_device_polling(
     ]
     for router_status in mikrotik_routers:
         if (
-            router_status.get("enabled", True)
+            mikrotik_collector_enabled
+            and router_status.get("enabled", True)
             and router_status.get("configured")
             and not router_status.get("connected")
         ):
@@ -270,6 +281,8 @@ async def coordinated_device_polling(
     mikrotik_state = (
         "offline"
         if errors.get("mikrotik")
+        else "unconfigured"
+        if not mikrotik_collector_enabled
         else "degraded"
         if configured_routers and connected_routers < configured_routers
         else "online"
@@ -362,6 +375,11 @@ async def coordinated_device_polling(
                 "cache_age_seconds": None,
                 "detail": (
                     errors.get("mikrotik")
+                    or (
+                        "Collector disabled by deployment configuration."
+                        if not mikrotik_collector_enabled
+                        else None
+                    )
                     or mikrotik.get("collector", {}).get("detail")
                     or "Centralized RouterOS collector telemetry."
                 ),
