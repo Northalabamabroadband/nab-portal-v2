@@ -110,10 +110,11 @@ export function NetworkOperationsCenter({ token }: { token: string }) {
     setError("");
 
     try {
-      const next = await request<PollingOverview>(
+      const response = await request<unknown>(
         `/network-center/polling${force ? "?force=true" : ""}`,
         token,
       );
+      const next = normalizePollingOverview(response);
       setData(next);
       return Math.max(5, next.poll_interval_seconds || 15);
     } catch (caught) {
@@ -214,7 +215,7 @@ export function NetworkOperationsCenter({ token }: { token: string }) {
     <section className="noc-center coordinated-noc">
       <div className="noc-header">
         <div>
-          <p className="eyebrow">NETWORK OPERATIONS · RC1 BUILD 031</p>
+          <p className="eyebrow">NETWORK OPERATIONS · RC1 BUILD 032</p>
           <h2>Unified Device Polling</h2>
           <p>
             UISP NMS device telemetry, MikroTik collector state, and
@@ -410,8 +411,179 @@ export function NetworkOperationsCenter({ token }: { token: string }) {
   );
 }
 
-function display(value: string) {
-  return value
+function normalizePollingOverview(value: unknown): PollingOverview {
+  if (!isRecord(value)) {
+    throw new Error("Network polling returned an invalid response.");
+  }
+
+  const summary = isRecord(value.summary) ? value.summary : {};
+  const errors = isRecord(value.errors)
+    ? Object.fromEntries(
+      Object.entries(value.errors).map(([source, detail]) => [
+        source,
+        String(detail || "Polling source unavailable"),
+      ]),
+    )
+    : {};
+
+  return {
+    generated_at: textValue(
+      value.generated_at,
+      new Date().toISOString(),
+    ),
+    poll_interval_seconds: numberValue(
+      value.poll_interval_seconds,
+      15,
+    ),
+    mode: textValue(value.mode, "coordinated-multi-source-cache"),
+    summary: {
+      devices_total: numberValue(summary.devices_total),
+      devices_online: numberValue(summary.devices_online),
+      devices_offline: numberValue(summary.devices_offline),
+      devices_warning: numberValue(summary.devices_warning),
+      devices_unknown: numberValue(summary.devices_unknown),
+      sites_total: numberValue(summary.sites_total),
+      active_alarms: numberValue(summary.active_alarms),
+      critical_alarms: numberValue(summary.critical_alarms),
+      customers_affected: numberValue(summary.customers_affected),
+      sources_healthy: numberValue(summary.sources_healthy),
+      sources_total: numberValue(summary.sources_total, 3),
+    },
+    sources: Array.isArray(value.sources)
+      ? value.sources.filter(isRecord).map(normalizeSource)
+      : [],
+    devices: Array.isArray(value.devices)
+      ? value.devices.filter(isRecord).map(normalizeDevice)
+      : [],
+    alarms: Array.isArray(value.alarms)
+      ? value.alarms.filter(isRecord).map(normalizeAlarm)
+      : [],
+    sites: Array.isArray(value.sites)
+      ? value.sites.map((site) => String(site || "")).filter(Boolean)
+      : [],
+    errors,
+  };
+}
+
+function normalizeSource(source: Record<string, unknown>): PollSource {
+  return {
+    id: sourceId(source.id),
+    name: textValue(source.name, "Polling source"),
+    state: sourceState(source.state),
+    mode: textValue(source.mode, "Cached polling"),
+    device_count: numberValue(source.device_count),
+    poll_interval_seconds: optionalNumber(source.poll_interval_seconds),
+    last_polled_at: optionalText(source.last_polled_at),
+    cache_age_seconds: optionalNumber(source.cache_age_seconds),
+    cached_devices: optionalNumber(source.cached_devices) ?? undefined,
+    detail: textValue(source.detail, "Polling status unavailable."),
+  };
+}
+
+function normalizeDevice(device: Record<string, unknown>): Device {
+  return {
+    ...device,
+    id: textValue(device.id, "unknown-device"),
+    source_id: textValue(device.source_id),
+    source: sourceId(device.source),
+    source_label: textValue(device.source_label, "Network"),
+    name: textValue(device.name, "Unknown device"),
+    model: textValue(device.model, "Unknown"),
+    type: textValue(device.type, "network"),
+    status: deviceState(device.status),
+    site_name: textValue(device.site_name, "Unknown site"),
+    ip: optionalText(device.ip),
+    mac: optionalText(device.mac),
+    firmware: optionalText(device.firmware),
+    cpu: optionalNumber(device.cpu),
+    memory: optionalNumber(device.memory),
+    temperature: optionalNumber(device.temperature),
+    signal: optionalNumber(device.signal),
+    latency: optionalNumber(device.latency),
+    packet_loss: optionalNumber(device.packet_loss),
+    customer_count: numberValue(device.customer_count),
+    interface_count: optionalNumber(device.interface_count) ?? undefined,
+    client_id: optionalText(device.client_id) ?? undefined,
+    serial_number: optionalText(device.serial_number) ?? undefined,
+    network_id: optionalText(device.network_id) ?? undefined,
+    wifi_networks: optionalNumber(device.wifi_networks) ?? undefined,
+    warning_count: optionalNumber(device.warning_count) ?? undefined,
+    poll_detail: optionalText(device.poll_detail) ?? undefined,
+    poll_mode: textValue(device.poll_mode, "cached"),
+    poll_interval_seconds: optionalNumber(device.poll_interval_seconds),
+    last_polled_at: optionalText(device.last_polled_at),
+    cache_age_seconds: optionalNumber(device.cache_age_seconds),
+    cache_remaining_seconds: optionalNumber(
+      device.cache_remaining_seconds,
+    ),
+  } as Device;
+}
+
+function normalizeAlarm(alarm: Record<string, unknown>): Alarm {
+  return {
+    severity: alarm.severity === "critical" ? "critical" : "warning",
+    type: textValue(alarm.type, "network_warning"),
+    title: textValue(alarm.title, "Network warning"),
+    detail: textValue(alarm.detail, "No additional detail."),
+    device_id: textValue(alarm.device_id),
+    device_name: textValue(alarm.device_name, "Unknown device"),
+    site_name: textValue(alarm.site_name, "Unknown site"),
+    customers_affected: numberValue(alarm.customers_affected),
+    source: sourceId(alarm.source),
+    source_label: textValue(alarm.source_label, "Network"),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function textValue(value: unknown, fallback = "") {
+  if (value === null || value === undefined || value === "") return fallback;
+  return typeof value === "string" ? value : String(value);
+}
+
+function optionalText(value: unknown) {
+  const text = textValue(value);
+  return text || null;
+}
+
+function numberValue(value: unknown, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function optionalNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sourceId(value: unknown): SourceId {
+  return value === "mikrotik" || value === "tauc" ? value : "uisp";
+}
+
+function sourceState(value: unknown): PollSource["state"] {
+  if (
+    value === "online"
+    || value === "degraded"
+    || value === "offline"
+    || value === "unconfigured"
+  ) return value;
+  return "degraded";
+}
+
+function deviceState(value: unknown): Device["status"] {
+  if (
+    value === "online"
+    || value === "offline"
+    || value === "warning"
+  ) return value;
+  return "unknown";
+}
+
+function display(value: unknown) {
+  return String(value || "unknown")
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());

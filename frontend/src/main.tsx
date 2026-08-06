@@ -5,6 +5,7 @@ import { FeatureHub } from "./featureHub";
 import "./styles.build005.css";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import "./styles.recovery.css";
 import { IntegrationHealth } from "./integrations";
 import "./styles.integrations.css";
 import { MikroTikOperations } from "./mikrotik";
@@ -111,6 +112,112 @@ type LiveSummary = {
   tauc: Record<string, unknown>;
   mikrotik: Record<string, unknown>;
 };
+
+type PortalErrorBoundaryState = {
+  error: string;
+};
+
+class PortalErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  PortalErrorBoundaryState
+> {
+  state: PortalErrorBoundaryState = { error: "" };
+
+  static getDerivedStateFromError(error: unknown): PortalErrorBoundaryState {
+    return {
+      error: error instanceof Error
+        ? error.message
+        : "An unexpected screen error occurred.",
+    };
+  }
+
+  componentDidCatch(error: unknown, info: React.ErrorInfo) {
+    console.error("Portal render failure", error, info.componentStack);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+
+    return (
+      <main className="portal-recovery">
+        <section>
+          <p className="eyebrow">MISSION RECOVERY</p>
+          <h1>The portal screen stopped rendering</h1>
+          <p>
+            Your server is still running. Reload this screen first; if the
+            problem remains, reset only the saved portal session and sign in
+            again.
+          </p>
+          <code>{this.state.error}</code>
+          <div>
+            <button type="button" onClick={() => window.location.reload()}>
+              Reload portal
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                clearSavedSession();
+                window.location.replace("/");
+              }}
+            >
+              Reset saved session
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+}
+
+function savedValue(key: string) {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function clearSavedSession() {
+  try {
+    localStorage.removeItem("nab_v2_token");
+    localStorage.removeItem("nab_v2_user");
+  } catch {
+    // Storage can be unavailable in restricted browser modes.
+  }
+}
+
+function savedUser(): User | null {
+  const raw = savedValue("nab_v2_user");
+  if (!raw) return null;
+
+  try {
+    const value = JSON.parse(raw) as Partial<User>;
+    if (
+      typeof value.id !== "string"
+      || typeof value.email !== "string"
+      || typeof value.display_name !== "string"
+      || !Array.isArray(value.roles)
+      || !Array.isArray(value.permissions)
+    ) {
+      clearSavedSession();
+      return null;
+    }
+    return value as User;
+  } catch {
+    clearSavedSession();
+    return null;
+  }
+}
+
+function saveSession(token: string, user: User) {
+  try {
+    localStorage.setItem("nab_v2_token", token);
+    localStorage.setItem("nab_v2_user", JSON.stringify(user));
+  } catch {
+    // The in-memory session still works when browser storage is unavailable.
+  }
+}
 
 function LoginPage({
   onLogin
@@ -795,16 +902,12 @@ function describePayment(payment?: Record<string, unknown> | null) {
 
 function App() {
   const [token, setToken] = useState(
-    () => localStorage.getItem("nab_v2_token") || ""
+    () => savedValue("nab_v2_token")
   );
-  const [user, setUser] = useState<User | null>(() => {
-    const raw = localStorage.getItem("nab_v2_user");
-    return raw ? JSON.parse(raw) : null;
-  });
+  const [user, setUser] = useState<User | null>(() => savedUser());
 
   function login(nextToken: string, nextUser: User) {
-    localStorage.setItem("nab_v2_token", nextToken);
-    localStorage.setItem("nab_v2_user", JSON.stringify(nextUser));
+    saveSession(nextToken, nextUser);
     setToken(nextToken);
     setUser(nextUser);
   }
@@ -813,8 +916,7 @@ function App() {
     try {
       await apiRequest<void>("/auth/logout", { method: "POST" }, token);
     } finally {
-      localStorage.removeItem("nab_v2_token");
-      localStorage.removeItem("nab_v2_user");
+      clearSavedSession();
       setToken("");
       setUser(null);
     }
@@ -829,6 +931,8 @@ function App() {
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <PortalErrorBoundary>
+      <App />
+    </PortalErrorBoundary>
   </React.StrictMode>
 );

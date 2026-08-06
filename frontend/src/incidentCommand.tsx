@@ -227,7 +227,7 @@ export function IncidentCommand({
     <section className="incident-command">
       <header className={`incident-command-header command-${data?.mission_state || "degraded"}`}>
         <div>
-          <p className="eyebrow">OPERATIONS RESPONSE · RC1 BUILD 031</p>
+          <p className="eyebrow">OPERATIONS RESPONSE · RC1 BUILD 032</p>
           <h2>Incident Command</h2>
           <p>
             Triage live outages and manage every open support ticket and field
