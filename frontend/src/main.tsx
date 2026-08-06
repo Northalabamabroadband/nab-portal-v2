@@ -7,6 +7,10 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { IntegrationHealth } from "./integrations";
 import "./styles.integrations.css";
+import { MikroTikOperations } from "./mikrotik";
+import "./styles.mikrotik.css";
+import { ManagedWifiCenter } from "./managedWifi";
+import "./styles.managed-wifi.css";
 import { FiberMap } from "./fiberMap";
 import "./styles.milestone12map.css";
 import { FiberOperations } from "./fiber";
@@ -44,6 +48,30 @@ type SearchItem = {
   status: string;
 };
 
+type CustomerActivity = {
+  id: string;
+  kind: "note" | "ticket" | "workorder" | "device";
+  title: string;
+  detail: string;
+  status: string;
+  actor: string;
+  occurred_at: string;
+};
+
+type TaucAssignment = {
+  id: string;
+  client_id: string;
+  device_id: string;
+  serial_number: string;
+  mac_address?: string | null;
+  device_model?: string | null;
+  network_id?: string | null;
+  network_name?: string | null;
+  firmware_version?: string | null;
+  assigned_by: string;
+  created_at: string;
+};
+
 type Customer360 = {
   client_id: string;
   name: string;
@@ -72,6 +100,8 @@ type Customer360 = {
     tickets: Record<string, unknown>[];
     workorders: Record<string, unknown>[];
   };
+  activity?: CustomerActivity[];
+  tauc_devices?: TaucAssignment[];
 };
 
 type LiveSummary = {
@@ -81,6 +111,7 @@ type LiveSummary = {
   open_tickets: number;
   uisp: Record<string, unknown>;
   tauc: Record<string, unknown>;
+  mikrotik: Record<string, unknown>;
 };
 
 function LoginPage({
@@ -227,11 +258,13 @@ function CustomerSearch({
 function CustomerView({
   token,
   clientId,
-  onClose
+  onClose,
+  onOpenManagedWifi
 }: {
   token: string;
   clientId: string;
   onClose: () => void;
+  onOpenManagedWifi: (clientId: string) => void;
 }) {
   const [data, setData] = useState<Customer360 | null>(null);
   const [error, setError] = useState("");
@@ -240,8 +273,9 @@ function CustomerView({
   const [actionBusy, setActionBusy] = useState("");
   const [ticketSubject, setTicketSubject] = useState("");
   const [workTitle, setWorkTitle] = useState("");
-  const [ssid, setSsid] = useState("");
-  const [wifiPassword, setWifiPassword] = useState("");
+  const [noteBody, setNoteBody] = useState("");
+  const [taucSerial, setTaucSerial] = useState("");
+  const [taucMac, setTaucMac] = useState("");
 
   useEffect(() => {
     setData(null);
@@ -253,7 +287,6 @@ function CustomerView({
         setError(caught instanceof Error ? caught.message : "Unable to load customer")
       );
   }, [clientId, token]);
-
 
   const runAction = async (label: string, path: string, body: Record<string, unknown> = {}) => {
     setActionBusy(label); setActionError(""); setActionMessage("");
@@ -270,6 +303,84 @@ function CustomerView({
       setData(refreshed);
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : `${label} failed`);
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const addNote = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const body = noteBody.trim();
+    if (!body) return;
+    setActionBusy("Account note"); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(
+        `/platform/customers/${clientId}/notes`,
+        { method: "POST", body: JSON.stringify({ body }) },
+        token
+      );
+      setNoteBody("");
+      setData(await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      ));
+      setActionMessage("Account note added to the customer timeline.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to add account note");
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const assignTaucDevice = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setActionBusy("TAUC assignment"); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(
+        `/customers/${clientId}/gateway/resolve`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            client_id: clientId,
+            serial_number: taucSerial.trim(),
+            mac_address: taucMac.trim()
+          })
+        },
+        token
+      );
+      setTaucSerial("");
+      setTaucMac("");
+      setData(await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      ));
+      setActionMessage("TAUC device assigned to this customer.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to assign TAUC device");
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const removeTaucDevice = async (assignment: TaucAssignment) => {
+    if (!window.confirm(`Remove TAUC device ${assignment.serial_number} from this customer?`)) return;
+    setActionBusy(`Remove ${assignment.id}`); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(
+        `/customers/${clientId}/gateways/${assignment.id}`,
+        { method: "DELETE" },
+        token
+      );
+      setData(await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      ));
+      setActionMessage("TAUC device removed from this customer.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to remove TAUC device");
     } finally {
       setActionBusy("");
     }
@@ -349,23 +460,44 @@ function CustomerView({
             <input required minLength={3} value={workTitle} onChange={event => setWorkTitle(event.target.value)} placeholder="Work required" />
             <button disabled={Boolean(actionBusy)}>{actionBusy === "Field work order" ? "Dispatching…" : "Create work order"}</button>
           </form>
-          <form onSubmit={(event) => { event.preventDefault(); runAction("Wi-Fi name update", "/tauc/controls/wifi/ssid", { device_id: deviceId, value: ssid }); }}>
-            <h4>Update Wi-Fi name</h4>
-            <input required disabled={!deviceId} value={ssid} onChange={event => setSsid(event.target.value)} placeholder={deviceId ? "New SSID" : "Gateway ID unavailable"} />
-            <button disabled={Boolean(actionBusy) || !deviceId}>Apply SSID</button>
-          </form>
-          <form onSubmit={(event) => { event.preventDefault(); runAction("Wi-Fi password update", "/tauc/controls/wifi/password", { device_id: deviceId, value: wifiPassword }); }}>
-            <h4>Update Wi-Fi password</h4>
-            <input required minLength={8} type="password" disabled={!deviceId} value={wifiPassword} onChange={event => setWifiPassword(event.target.value)} placeholder={deviceId ? "New password" : "Gateway ID unavailable"} />
-            <button disabled={Boolean(actionBusy) || !deviceId}>Apply password</button>
-          </form>
           <div className="gateway-actions">
-            <h4>Gateway maintenance</h4>
-            <button disabled={Boolean(actionBusy) || !deviceId} onClick={() => runAction("Gateway diagnostics", "/tauc/controls/diagnostics", { device_id: deviceId })}>Run diagnostics</button>
-            <button className="danger-action" disabled={Boolean(actionBusy) || !deviceId} onClick={() => { if (window.confirm("Reboot this customer gateway now?")) runAction("Gateway reboot", "/tauc/controls/reboot", { device_id: deviceId }); }}>Reboot gateway</button>
+            <h4>Managed Wi‑Fi</h4>
+            <p>
+              Live clients, wireless networks, diagnostics, and gateway controls
+              are centralized in Managed Wi‑Fi.
+            </p>
+            <button
+              type="button"
+              disabled={!data.tauc_devices?.length}
+              onClick={() => onOpenManagedWifi(data.client_id)}
+            >
+              Open Managed Wi‑Fi
+            </button>
           </div>
         </div>
         <p className="muted">TAUC write actions remain permission-checked and configuration-gated by verified tenant endpoint paths.</p>
+      </section>
+
+      <section className="customer-timeline panel">
+        <div className="panel-heading">
+          <div><p className="eyebrow">ACCOUNT HISTORY</p><h3>Customer activity timeline</h3></div>
+          <span>{data.activity?.length ?? 0} events</span>
+        </div>
+        <form className="timeline-note-form" onSubmit={addNote}>
+          <textarea required maxLength={2000} value={noteBody} onChange={event => setNoteBody(event.target.value)} placeholder="Add an internal account note visible to portal staff…" />
+          <button disabled={Boolean(actionBusy)}>{actionBusy === "Account note" ? "Saving…" : "Add note"}</button>
+        </form>
+        <div className="timeline-list">
+          {(data.activity || []).map(item => <article className={`timeline-item ${item.kind}`} key={`${item.kind}-${item.id}`}>
+            <span className="timeline-marker" aria-hidden="true" />
+            <div>
+              <header><strong>{item.title}</strong><time dateTime={item.occurred_at}>{new Date(item.occurred_at).toLocaleString()}</time></header>
+              <p>{item.detail}</p>
+              <footer>{item.actor || "System"}{item.status ? ` · ${item.status.replaceAll("_", " ")}` : ""}</footer>
+            </div>
+          </article>)}
+          {!data.activity?.length && <p className="muted">No account activity has been recorded yet.</p>}
+        </div>
       </section>
 
       <div className="dashboard-grid">
@@ -389,9 +521,49 @@ function CustomerView({
         <article className="panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">TAUC GATEWAY</p>
-              <h3>Gateway identity</h3>
+              <p className="eyebrow">TAUC DEVICES</p>
+              <h3>Customer assignments</h3>
             </div>
+            <span>{data.tauc_devices?.length ?? 0} assigned</span>
+          </div>
+          <form className="tauc-assignment-form" onSubmit={assignTaucDevice}>
+            <input
+              required
+              minLength={4}
+              maxLength={128}
+              value={taucSerial}
+              onChange={event => setTaucSerial(event.target.value)}
+              placeholder="TAUC serial number"
+            />
+            <input
+              required
+              maxLength={32}
+              value={taucMac}
+              onChange={event => setTaucMac(event.target.value)}
+              placeholder="Device MAC address"
+            />
+            <button disabled={Boolean(actionBusy)}>
+              {actionBusy === "TAUC assignment" ? "Verifying…" : "Verify and assign"}
+            </button>
+          </form>
+          <div className="tauc-assignment-list">
+            {(data.tauc_devices || []).map(assignment => (
+              <div className="tauc-assignment" key={assignment.id}>
+                <div>
+                  <strong>{assignment.device_model || "TAUC gateway"}</strong>
+                  <span>SN {assignment.serial_number} · {assignment.mac_address || "MAC unavailable"}</span>
+                  <small>{assignment.network_name || assignment.network_id || "Network unavailable"}</small>
+                </div>
+                <button
+                  type="button"
+                  className="danger-action"
+                  disabled={Boolean(actionBusy)}
+                  onClick={() => removeTaucDevice(assignment)}
+                >
+                  {actionBusy === `Remove ${assignment.id}` ? "Removing…" : "Remove"}
+                </button>
+              </div>
+            ))}
           </div>
           {data.gateway ? (
             <div className="readiness-list">
@@ -399,10 +571,19 @@ function CustomerView({
               <div><span>Serial</span><strong>{String(device.sn || "Unavailable")}</strong></div>
               <div><span>MAC</span><strong>{String(device.mac || "Unavailable")}</strong></div>
               <div><span>Firmware</span><strong>{String(device.fwVersion || "Unavailable")}</strong></div>
-              <div><span>Network</span><strong>{String(network.networkName || network.id || "Unavailable")}</strong></div>
+              <div><span>Network</span><strong>{String(network.networkName || network.networkId || network.id || "Unavailable")}</strong></div>
             </div>
           ) : (
             <p className="muted">{data.gateway_error || "No TAUC gateway resolved."}</p>
+          )}
+          {!!data.tauc_devices?.length && (
+            <button
+              type="button"
+              className="customer-managed-wifi-link"
+              onClick={() => onOpenManagedWifi(data.client_id)}
+            >
+              Open live Wi‑Fi networks, clients, diagnostics, and controls →
+            </button>
           )}
         </article>
 
@@ -437,6 +618,7 @@ function Dashboard({
 }) {
   const [summary, setSummary] = useState<LiveSummary | null>(null);
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
+  const [managedWifiCustomerId, setManagedWifiCustomerId] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activePage, setActivePage] = useState("Mission Control");
   const [liveState, setLiveState] = useState("Connecting");
@@ -493,6 +675,7 @@ function Dashboard({
             ["◉", "Customers"],
             ["⌁", "Managed Wi-Fi"],
             ["⌘", "Network"],
+            ["⌗", "MikroTik NOC"],
             ["⌬", "Network Telemetry"],
             ["⌇", "Fiber"],
             ["⌖", "Fiber Map"],
@@ -563,6 +746,11 @@ function Dashboard({
               setSelectedClient(null);
               setActivePage("Customers");
             }}
+            onOpenManagedWifi={(clientId) => {
+              setManagedWifiCustomerId(clientId);
+              setSelectedClient(null);
+              setActivePage("Managed Wi-Fi");
+            }}
           />
         ) : activePage === "Incident Command" ? (
           <FeatureHub token={token} mode="incidents" />
@@ -574,6 +762,8 @@ function Dashboard({
           <IntegrationHealth token={token} />
         ) : activePage === "Network" ? (
           <NetworkOperationsCenter token={token} />
+        ) : activePage === "MikroTik NOC" ? (
+          <MikroTikOperations token={token} />
         ) : activePage === "Network Telemetry" ? (
           <FeatureHub token={token} mode="network" />
         ) : activePage === "Billing" ? (
@@ -591,7 +781,10 @@ function Dashboard({
         ) : activePage === "Mission Reports" ? (
           <FeatureHub token={token} mode="reports" />
         ) : activePage === "Managed Wi-Fi" ? (
-          <FeatureHub token={token} mode="wifi" />
+          <ManagedWifiCenter
+            token={token}
+            initialCustomerId={managedWifiCustomerId}
+          />
         ) : activePage === "Subscriber Portal" ? (
           <FeatureHub token={token} mode="portal" />
         ) : activePage === "Capability Parity" ? (
@@ -617,7 +810,7 @@ function Dashboard({
               <div>
                 <p className="eyebrow">LIVE TELEMETRY</p>
                 <h2>North Alabama Broadband Flight Deck</h2>
-                <p>UISP, TAUC, Customer 360, and live telemetry are integrated.</p>
+                <p>UISP, TAUC, MikroTik infrastructure, Customer 360, and live telemetry are integrated.</p>
               </div>
               <span className="live-chip"><i /> {summary?.status || "Operational"}</span>
             </section>
@@ -645,6 +838,7 @@ function Dashboard({
                 <div className="readiness-list">
                   <div><span>UISP</span><strong>{summary?.uisp?.connected ? "Connected" : "Unavailable"}</strong></div>
                   <div><span>TAUC</span><strong>{summary?.tauc?.configured ? "Configured" : "Not configured"}</strong></div>
+                  <div><span>MikroTik Core</span><strong>{summary?.mikrotik?.connected ? "Connected" : summary?.mikrotik?.configured ? "Unavailable" : "Not configured"}</strong></div>
                   <div><span>Customer 360</span><strong>Online</strong></div>
                   <div><span>Live WebSocket</span><strong>{liveState}</strong></div>
                 </div>

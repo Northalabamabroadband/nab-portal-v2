@@ -14,8 +14,13 @@ class GatewayMappingRequest(BaseModel):
 
 class WifiSettingRequest(BaseModel):
     device_id: str = Field(min_length=1, max_length=160)
+    network_id: str | None = Field(default=None, max_length=160)
     value: str = Field(min_length=1, max_length=128)
 
 
 class DeviceControlRequest(BaseModel):
     device_id: str = Field(min_length=1, max_length=160)
+    network_id: str | None = Field(default=None, max_length=160)
+    network_name: str | None = Field(default=None, max_length=220)
+    serial_number: str | None = Field(default=None, max_length=128)
+    mac_address: str | None = Field(default=None, max_length=32)

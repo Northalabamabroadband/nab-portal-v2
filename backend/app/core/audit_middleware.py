@@ -13,11 +13,13 @@ class AuditMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         path = request.url.path
-        if (
+        v2_auditable = (
             path.startswith("/api/v2/")
             and not path.startswith("/api/v2/live/")
             and path not in {"/api/v2/audit", "/api/v2/auth/login"}
-        ):
+        )
+        desktop_auditable = path.startswith("/api/desktop/v1/")
+        if v2_auditable or desktop_auditable:
             token = request.headers.get("authorization", "")
             if token.lower().startswith("bearer "):
                 token = token[7:]
@@ -35,7 +37,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 with SessionLocal() as session:
                     session.add(AuditEvent(
                         actor_id=str(claims.get("sub") or "") or None,
-                        actor_email=str(claims.get("email") or "") or None,
+                        actor_email=(
+                            "desktop-sync"
+                            if desktop_auditable
+                            else str(claims.get("email") or "") or None
+                        ),
                         action=f"{request.method} {path}",
                         resource_type="http_request",
                         method=request.method,
