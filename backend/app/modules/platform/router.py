@@ -24,7 +24,7 @@ from app.modules.incidents.service import (
 from app.modules.networkcenter.service import overview, topology
 from app.modules.uisp.client import UISPError
 
-router = APIRouter(prefix="/platform", tags=["platform-build029"])
+router = APIRouter(prefix="/platform", tags=["platform-build030"])
 
 
 class CustomerNoteCreate(BaseModel):
@@ -227,10 +227,15 @@ async def outage_intelligence(
 
 @router.get("/incidents/command")
 async def incident_command(
-    claims: Annotated[dict, Depends(require_permission("network.read"))],
+    claims: Annotated[dict, Depends(require_permission("command_post.view"))],
     session: Annotated[Session, Depends(database_session)],
 ) -> dict:
-    network = await overview(1000)
+    network_error: str | None = None
+    try:
+        network = await overview(1000)
+    except UISPError as exc:
+        network_error = str(exc)
+        network = {"summary": {}, "devices": [], "alarms": [], "sites": []}
     alerts = list(session.scalars(
         select(OperationalAlert)
         .where(OperationalAlert.acknowledged.is_(False))
@@ -249,7 +254,14 @@ async def incident_command(
         .order_by(WorkOrder.created_at.desc())
         .limit(500)
     ).all())
-    return build_incident_command(network, alerts, tickets, workorders)
+    command = build_incident_command(
+        network,
+        alerts,
+        tickets,
+        workorders,
+    )
+    command["network_error"] = network_error
+    return command
 
 
 
@@ -590,7 +602,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build029",
+        "release": "2.0.0-rc1-build030",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -598,7 +610,7 @@ def capability_parity(
         "external_controls": [
             "UISP CRM remains authoritative for billing mutations.",
             "UISP NMS remains authoritative for network configuration.",
-            "MikroTik access is read-only in Build 029; router changes remain in RouterOS.",
+            "MikroTik access is read-only in Build 030; router changes remain in RouterOS.",
             "TAUC writes remain disabled until verified tenant paths are configured.",
             "Customer self-service remains gated on identity recovery and policy controls.",
         ],
@@ -610,7 +622,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build029",
+        "release": "2.0.0-rc1-build030",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -652,5 +664,8 @@ def admin_capabilities(
             "mission_control_overview": "consolidated-network-and-operations",
             "customer_directory": "uisp-crm-authoritative",
             "customer_directory_pagination": True,
+            "incident_command_workspace": "outages-tickets-and-workorders",
+            "incident_command_management": "permission-gated-shared-records",
+            "network_telemetry_navigation": False,
         },
     }
