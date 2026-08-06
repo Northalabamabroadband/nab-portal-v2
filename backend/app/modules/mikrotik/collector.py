@@ -213,7 +213,7 @@ class MikroTikCollector:
                 last_seen=attempted_at.isoformat(),
                 interface_count=len(rates),
             )
-            self._add_rollups(profile.key, attempted_at, rates)
+            await self._add_rollups(profile.key, attempted_at, rates)
         except Exception as exc:
             detail = str(exc) if isinstance(exc, MikroTikError) else f"Collector error: {exc}"
             await self._store_status(
@@ -285,7 +285,7 @@ class MikroTikCollector:
 
         await asyncio.to_thread(store)
 
-    def _add_rollups(
+    async def _add_rollups(
         self,
         router_key: str,
         timestamp: datetime,
@@ -297,7 +297,7 @@ class MikroTikCollector:
             if key[2] < bucket
         ]
         if finished:
-            asyncio.create_task(self._flush_rollups(finished))
+            await self._flush_rollups(finished)
         for interface_name, rate in rates.items():
             key = (router_key, interface_name, bucket)
             accumulator = self._rollups.setdefault(
