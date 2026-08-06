@@ -3,14 +3,12 @@ import { request as load } from "./api";
 import { AccessControl } from "./accessControl";
 import { FeatureErrorBoundary } from "./featureErrorBoundary";
 
-type Mode = "parity" | "incidents" | "outages" | "network" | "field" | "reports" | "portal" | "admin";
+type Mode = "parity" | "outages" | "field" | "reports" | "portal" | "admin";
 type Json = Record<string, any>;
 
 const endpoint: Record<Mode, string> = {
   parity: "/platform/parity",
-  incidents: "/platform/incidents/command",
   outages: "/platform/outages",
-  network: "/platform/network-intelligence",
   field: "/platform/field/my-work",
   reports: "/platform/reports/operations",
   portal: "/platform/portal/readiness",
@@ -19,9 +17,7 @@ const endpoint: Record<Mode, string> = {
 
 const title: Record<Mode, string> = {
   parity: "Capability Parity",
-  incidents: "Incident Command",
   outages: "Outage Intelligence",
-  network: "Network Topology & Performance",
   field: "Ground Crew Mobile Queue",
   reports: "Mission Reporting",
   portal: "Customer Portal",
@@ -36,8 +32,6 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
   const [data, setData] = useState<Json | null>(null);
   const [error, setError] = useState("");
   const [working, setWorking] = useState(false);
-  const [dispatching, setDispatching] = useState("");
-  const [actionMessage, setActionMessage] = useState("");
 
   const refresh = async () => {
     setWorking(true); setError("");
@@ -58,40 +52,12 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
 
   useEffect(() => { refresh(); }, [mode, token]);
 
-  const dispatch = async (incidentId: string) => {
-    setDispatching(incidentId);
-    setActionMessage("");
-    setError("");
-    try {
-      const result = await load<Json>(
-        `/platform/incidents/${incidentId}/dispatch`,
-        token,
-        { method: "POST" }
-      );
-      const created = (result.created || []).join(" and ");
-      const reopened = (result.reopened || []).join(" and ");
-      setActionMessage(
-        created
-          ? `Dispatch created ${created}. Existing resources were reused automatically.`
-          : reopened
-            ? `Dispatch reopened ${reopened} for the active incident.`
-            : "Dispatch already exists. No duplicate records were created."
-      );
-      await refresh();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to dispatch incident");
-    } finally {
-      setDispatching("");
-    }
-  };
-
   return <section className="feature-hub">
     <header>
-      <div><p className="eyebrow">RC1 BUILD 029</p><h2>{title[mode]}</h2></div>
+      <div><p className="eyebrow">RC1 BUILD 030</p><h2>{title[mode]}</h2></div>
       <button onClick={refresh}>{working ? "Refreshing…" : "Refresh"}</button>
     </header>
     {error && <div className="error-message">{error}</div>}
-    {actionMessage && <div className="dispatch-message">{actionMessage}</div>}
     {data && mode === "parity" && <>
       <div className="feature-metrics">
         <Value label="Capability domains" value={data.total_domains} />
@@ -105,31 +71,6 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
       </div>
       <article className="feature-detail"><h3>Externally controlled operations</h3><ul>{(data.external_controls || []).map((row: string) => <li key={row}>{row}</li>)}</ul></article>
     </>}
-    {data && mode === "incidents" && <>
-      <div className="incident-state">
-        <span>Mission state</span>
-        <strong className={`state-${data.mission_state}`}>{String(data.mission_state || "unknown")}</strong>
-      </div>
-      <div className="feature-metrics">
-        <Value label="Active incidents" value={data.summary?.active_incidents} />
-        <Value label="Customers affected" value={data.summary?.customers_affected} />
-        <Value label="Critical alerts" value={data.summary?.critical_alerts} />
-        <Value label="Unassigned ground work" value={data.summary?.unassigned_workorders} />
-      </div>
-      <div className="feature-grid incident-grid">{(data.incidents || []).map((incident: Json) =>
-        <article key={incident.id}>
-          <b>{incident.severity}</b>
-          <h3>{incident.site_name}</h3>
-          <p>{incident.devices.length} device{incident.devices.length === 1 ? "" : "s"} offline · {incident.customers_affected} customers affected</p>
-          <strong>{incident.alert_count} linked alerts</strong>
-          <small>{incident.recommended_action}</small>
-          <button className="dispatch-button" onClick={() => dispatch(incident.id)} disabled={Boolean(dispatching) || Boolean(incident.response_ready)}>
-            {incident.response_ready ? "Response package active" : dispatching === incident.id ? "Dispatching…" : "Create response package"}
-          </button>
-        </article>
-      )}</div>
-      {!data.incidents?.length && <article className="feature-detail"><h3>All systems nominal</h3><p>No active device-offline incidents were detected in the current UISP telemetry.</p></article>}
-    </>}
     {data && mode === "outages" && <>
       <div className="feature-metrics">
         <Value label="Active outages" value={data.active_outages} />
@@ -139,15 +80,6 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
       <div className="feature-grid">{(data.events || []).map((event: Json) =>
         <article key={event.site_name}><b>Critical</b><h3>{event.site_name}</h3><p>{event.devices.length} devices offline</p><strong>{event.customers_affected} customers affected</strong></article>
       )}</div>
-    </>}
-    {data && mode === "network" && <>
-      <div className="feature-metrics">
-        <Value label="Devices" value={data.summary?.devices_total} />
-        <Value label="Sites" value={data.summary?.sites_total} />
-        <Value label="Average latency" value={data.performance?.average_latency_ms == null ? "—" : `${data.performance.average_latency_ms} ms`} />
-        <Value label="Packet loss" value={data.performance?.average_packet_loss == null ? "—" : `${data.performance.average_packet_loss}%`} />
-      </div>
-      <div className="feature-grid">{(data.fleet_models || []).map((row: Json) => <article key={row.model}><h3>{row.model}</h3><strong>{row.count} devices</strong></article>)}</div>
     </>}
     {data && mode === "field" && <>
       <div className="feature-metrics"><Value label="Assigned work" value={data.count} /><Value label="Technician" value={data.technician} /></div>
