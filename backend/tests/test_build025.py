@@ -69,7 +69,7 @@ def test_build025_registers_routeros_routes_and_capabilities() -> None:
     assert mikrotik_paths
     assert all("/customers/" not in path for path in mikrotik_paths)
     capabilities = admin_capabilities({})
-    assert capabilities["release"] == "2.0.0-rc1-build028"
+    assert capabilities["release"] == "2.0.0-rc1-build029"
     assert (
         capabilities["features"]["mikrotik_routeros"]
         == "read-only-inventory-and-clients"
