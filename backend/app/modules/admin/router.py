@@ -68,6 +68,8 @@ def update_user_access(
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Administrator not found")
     if payload.role_names is not None:
+        if user.email == claims.get("email"):
+            raise HTTPException(status_code=400, detail="You cannot change your own roles")
         names = sorted(set(payload.role_names))
         roles = list(session.scalars(select(Role).where(Role.name.in_(names))).all()) if names else []
         if len(roles) != len(names):
@@ -76,6 +78,15 @@ def update_user_access(
     if payload.is_active is not None:
         if user.email == claims.get("email") and not payload.is_active:
             raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
+        if user.is_superuser and not payload.is_active:
+            active_superusers = list(session.scalars(
+                select(AdminUser).where(
+                    AdminUser.is_superuser.is_(True),
+                    AdminUser.is_active.is_(True),
+                )
+            ).all())
+            if len(active_superusers) <= 1:
+                raise HTTPException(status_code=400, detail="The last active superuser cannot be deactivated")
         user.is_active = payload.is_active
     session.commit()
     return {"id": user.id, "email": user.email, "is_active": user.is_active, "roles": sorted(r.name for r in user.roles)}
@@ -94,6 +105,8 @@ def update_role_access(
     if role is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
     codes = sorted(set(payload.permission_codes))
+    if role.name == "super_admin" and "admin.manage" not in codes:
+        raise HTTPException(status_code=400, detail="The super_admin role must retain admin.manage")
     permissions = list(session.scalars(select(Permission).where(Permission.code.in_(codes))).all()) if codes else []
     if len(permissions) != len(codes):
         raise HTTPException(status_code=400, detail="One or more permissions are invalid")

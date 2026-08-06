@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "production"
     app_name: str = "NAB Mission Control"
-    app_version: str = "2.0.0-rc1-build010"
+    app_version: str = "2.0.0-rc1-build011"
     app_secret_key: str
     database_url: str
     redis_url: str
