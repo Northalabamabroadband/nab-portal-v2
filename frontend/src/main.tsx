@@ -15,6 +15,8 @@ import { CustomersDirectory } from "./customersDirectory";
 import "./styles.customers-directory.css";
 import { MissionControlOverview } from "./missionControl";
 import "./styles.mission-control.css";
+import { IncidentCommand } from "./incidentCommand";
+import "./styles.incident-command.css";
 import { FiberMap } from "./fiberMap";
 import "./styles.milestone12map.css";
 import { FiberOperations } from "./fiber";
@@ -331,7 +333,6 @@ function CustomerView({
 
   const device = data.gateway?.device || {};
   const network = data.gateway?.network || {};
-  const deviceId = String(device.deviceId || device.id || device.device_id || "");
 
   return (
     <section className="customer360-shell">
@@ -602,7 +603,6 @@ function Dashboard({
             ["⌁", "Managed Wi-Fi"],
             ["⌘", "Network"],
             ["⌗", "MikroTik NOC"],
-            ["⌬", "Network Telemetry"],
             ["⌇", "Fiber"],
             ["⌖", "Fiber Map"],
             ["!", "Outages"],
@@ -679,7 +679,19 @@ function Dashboard({
             }}
           />
         ) : activePage === "Incident Command" ? (
-          <FeatureHub token={token} mode="incidents" />
+          <IncidentCommand
+            token={token}
+            permissions={user.permissions}
+            onOpenCustomer={(clientId) => {
+              setActivePage("Customers");
+              setSelectedClient(clientId);
+            }}
+            onNavigate={(page) => {
+              setActivePage(page);
+              setSelectedClient(null);
+              setSidebarOpen(false);
+            }}
+          />
         ) : activePage === "Fiber Map" ? (
           <FiberMap token={token} />
         ) : activePage === "Fiber" ? (
@@ -690,8 +702,6 @@ function Dashboard({
           <NetworkOperationsCenter token={token} />
         ) : activePage === "MikroTik NOC" ? (
           <MikroTikOperations token={token} />
-        ) : activePage === "Network Telemetry" ? (
-          <FeatureHub token={token} mode="network" />
         ) : activePage === "Billing" ? (
           <BillingCenter token={token} />
         ) : activePage === "Flight Alerts" ? (
