@@ -24,11 +24,20 @@ from app.modules.incidents.service import (
 from app.modules.networkcenter.service import overview, topology
 from app.modules.uisp.client import UISPError
 
-router = APIRouter(prefix="/platform", tags=["platform-build030"])
+router = APIRouter(prefix="/platform", tags=["platform-build031"])
 
 
 class CustomerNoteCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+
+
+def incident_command_state(
+    mission_state: str,
+    network_error: str | None,
+) -> str:
+    if network_error and mission_state == "nominal":
+        return "degraded"
+    return mission_state
 
 
 def _status_counts(
@@ -261,6 +270,10 @@ async def incident_command(
         workorders,
     )
     command["network_error"] = network_error
+    command["mission_state"] = incident_command_state(
+        command["mission_state"],
+        network_error,
+    )
     return command
 
 
@@ -602,7 +615,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build030",
+        "release": "2.0.0-rc1-build031",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -610,7 +623,7 @@ def capability_parity(
         "external_controls": [
             "UISP CRM remains authoritative for billing mutations.",
             "UISP NMS remains authoritative for network configuration.",
-            "MikroTik access is read-only in Build 030; router changes remain in RouterOS.",
+            "MikroTik access is read-only in Build 031; router changes remain in RouterOS.",
             "TAUC writes remain disabled until verified tenant paths are configured.",
             "Customer self-service remains gated on identity recovery and policy controls.",
         ],
@@ -622,7 +635,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build030",
+        "release": "2.0.0-rc1-build031",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -666,6 +679,12 @@ def admin_capabilities(
             "customer_directory_pagination": True,
             "incident_command_workspace": "outages-tickets-and-workorders",
             "incident_command_management": "permission-gated-shared-records",
+            "incident_command_urgent_priority": True,
+            "incident_command_network_failure_state": "degraded",
+            "network_coordinated_polling": "uisp-cache-mikrotik-collector-tauc-snapshot-cache",
+            "network_uisp_poll_coalescing": True,
+            "network_tauc_polling": "rate-limit-safe-no-additional-cloud-requests",
+            "network_dashboard_visibility_pause": True,
             "network_telemetry_navigation": False,
         },
     }

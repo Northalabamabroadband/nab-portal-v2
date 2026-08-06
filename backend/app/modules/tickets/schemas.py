@@ -1,18 +1,25 @@
 from datetime import datetime
+
 from pydantic import BaseModel, Field
+
+
+PRIORITY_PATTERN = "^(low|normal|high|critical|urgent)$"
 
 
 class TicketCreate(BaseModel):
     client_id: str | None = Field(default=None, max_length=64)
     subject: str = Field(min_length=3, max_length=220)
     description: str = Field(default="", max_length=10000)
-    priority: str = Field(default="normal", pattern="^(low|normal|high|critical)$")
+    priority: str = Field(default="normal", pattern=PRIORITY_PATTERN)
     assigned_to: str | None = Field(default=None, max_length=320)
 
 
 class TicketUpdate(BaseModel):
-    status: str | None = Field(default=None, pattern="^(open|pending|in_progress|resolved|closed)$")
-    priority: str | None = Field(default=None, pattern="^(low|normal|high|critical)$")
+    status: str | None = Field(
+        default=None,
+        pattern="^(open|pending|in_progress|resolved|closed)$",
+    )
+    priority: str | None = Field(default=None, pattern=PRIORITY_PATTERN)
     assigned_to: str | None = Field(default=None, max_length=320)
 
 

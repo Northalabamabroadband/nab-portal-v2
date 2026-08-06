@@ -64,7 +64,7 @@ def test_successful_control_can_invalidate_only_its_gateway_cache() -> None:
 
 def test_build028_reports_managed_wifi_operations() -> None:
     capabilities = admin_capabilities({})
-    assert capabilities["release"] == "2.0.0-rc1-build030"
+    assert capabilities["release"] == "2.0.0-rc1-build031"
     assert capabilities["features"]["managed_wifi_operations"] == (
         "fleet-clients-controls-and-diagnostics"
     )
