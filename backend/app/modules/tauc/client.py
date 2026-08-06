@@ -438,11 +438,16 @@ class TAUCClient:
             ),
         }
 
-    async def wifi_ssid(self, device_id: str) -> Any:
-        path = self._device_path(
+    async def wifi_ssid(
+        self,
+        device_id: str,
+        network_id: str = "",
+    ) -> Any:
+        path = self._resource_path(
             settings.tauc_wifi_ssid_read_path,
-            device_id,
-            "Wi-Fi SSID read endpoint",
+            endpoint_name="Wi-Fi SSID read endpoint",
+            device_id=device_id,
+            network_id=network_id,
         )
         return await self.request(
             "GET",
@@ -527,29 +532,51 @@ class TAUCClient:
             device_id=device_id,
         )
 
-    def _control_path(self, template: str, device_id: str) -> str:
-        return self._device_path(
+    def _control_path(
+        self,
+        template: str,
+        device_id: str,
+        network_id: str = "",
+    ) -> str:
+        return self._resource_path(
             template,
-            device_id,
-            "control endpoint",
+            endpoint_name="control endpoint",
+            device_id=device_id,
+            network_id=network_id,
         )
 
-    async def set_wifi_ssid(self, device_id: str, value: str) -> Any:
+    async def set_wifi_ssid(
+        self,
+        device_id: str,
+        value: str,
+        network_id: str = "",
+    ) -> Any:
         path = self._control_path(
             settings.tauc_wifi_ssid_update_path,
             device_id,
+            network_id,
         )
         return await self.request("PUT", path, json_data={"ssid": value})
 
-    async def set_wifi_password(self, device_id: str, value: str) -> Any:
+    async def set_wifi_password(
+        self,
+        device_id: str,
+        value: str,
+        network_id: str = "",
+    ) -> Any:
         path = self._control_path(
             settings.tauc_wifi_password_update_path,
             device_id,
+            network_id,
         )
         return await self.request("PUT", path, json_data={"password": value})
 
-    async def reboot(self, device_id: str) -> Any:
-        path = self._control_path(settings.tauc_reboot_path, device_id)
+    async def reboot(self, device_id: str, network_id: str = "") -> Any:
+        path = self._control_path(
+            settings.tauc_reboot_path,
+            device_id,
+            network_id,
+        )
         return await self.request("POST", path)
 
     async def connected_clients(
@@ -626,7 +653,7 @@ class TAUCClient:
         wifi: dict[str, Any] = {}
         wifi_networks: list[dict[str, Any]] = []
         try:
-            wifi_payload = await self.wifi_ssid(device_id)
+            wifi_payload = await self.wifi_ssid(device_id, network_id)
             wifi = result_data(wifi_payload)
             if not wifi and isinstance(wifi_payload, dict):
                 wifi = wifi_payload
@@ -691,17 +718,32 @@ class TAUCClient:
             "warnings": warnings,
         }
 
-    async def diagnostics(self, device_id: str) -> Any:
-        snapshot = await self.gateway_snapshot(device_id)
+    async def diagnostics(
+        self,
+        device_id: str,
+        *,
+        network_id: str = "",
+        network_name: str = "",
+        serial_number: str = "",
+        mac_address: str = "",
+    ) -> Any:
+        snapshot = await self.gateway_snapshot(
+            device_id,
+            network_id=network_id,
+            network_name=network_name,
+            serial_number=serial_number,
+            mac_address=mac_address,
+        )
         snapshot["provider_diagnostics_configured"] = bool(
             settings.tauc_diagnostics_path
         )
         if settings.tauc_diagnostics_path:
             try:
-                path = self._device_path(
+                path = self._resource_path(
                     settings.tauc_diagnostics_path,
-                    device_id,
-                    "diagnostics endpoint",
+                    endpoint_name="diagnostics endpoint",
+                    device_id=device_id,
+                    network_id=network_id,
                 )
                 snapshot["provider_diagnostics"] = await self.request("GET", path)
             except TAUCError as exc:
@@ -711,8 +753,8 @@ class TAUCClient:
                 snapshot["status"] = "partial"
         return snapshot
 
-    async def connection_status(self) -> dict[str, Any]:
-        status: dict[str, Any] = {
+    def configuration_status(self) -> dict[str, Any]:
+        return {
             "configured": self.configured(),
             "connected": None,
             "base_url": self.base_url,
@@ -731,7 +773,18 @@ class TAUCClient:
             "private_key_present": self.client_key.is_file(),
             "access_key_configured": bool(self.access_key),
             "secret_key_configured": bool(self.secret_key),
+            "controls": {
+                "ssid_update": bool(settings.tauc_wifi_ssid_update_path),
+                "password_update": bool(
+                    settings.tauc_wifi_password_update_path
+                ),
+                "reboot": bool(settings.tauc_reboot_path),
+                "provider_diagnostics": bool(settings.tauc_diagnostics_path),
+            },
         }
+
+    async def connection_status(self) -> dict[str, Any]:
+        status = self.configuration_status()
         if (
             self.configured()
             and settings.tauc_test_serial_number

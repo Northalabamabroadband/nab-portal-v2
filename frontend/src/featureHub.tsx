@@ -3,7 +3,7 @@ import { request as load } from "./api";
 import { AccessControl } from "./accessControl";
 import { FeatureErrorBoundary } from "./featureErrorBoundary";
 
-type Mode = "parity" | "incidents" | "outages" | "network" | "field" | "reports" | "portal" | "admin" | "wifi";
+type Mode = "parity" | "incidents" | "outages" | "network" | "field" | "reports" | "portal" | "admin";
 type Json = Record<string, any>;
 
 const endpoint: Record<Mode, string> = {
@@ -14,8 +14,7 @@ const endpoint: Record<Mode, string> = {
   field: "/platform/field/my-work",
   reports: "/platform/reports/operations",
   portal: "/platform/portal/readiness",
-  admin: "/platform/admin/capabilities",
-  wifi: "/integrations/health"
+  admin: "/platform/admin/capabilities"
 };
 
 const title: Record<Mode, string> = {
@@ -26,8 +25,7 @@ const title: Record<Mode, string> = {
   field: "Ground Crew Mobile Queue",
   reports: "Mission Reporting",
   portal: "Customer Portal",
-  admin: "Roles, Permissions & Features",
-  wifi: "Managed Wi-Fi Flight Controls"
+  admin: "Roles, Permissions & Features"
 };
 
 function Value({ label, value }: { label: string; value: unknown }) {
@@ -89,7 +87,7 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
 
   return <section className="feature-hub">
     <header>
-      <div><p className="eyebrow">RC1 BUILD 025</p><h2>{title[mode]}</h2></div>
+      <div><p className="eyebrow">RC1 BUILD 028</p><h2>{title[mode]}</h2></div>
       <button onClick={refresh}>{working ? "Refreshing…" : "Refresh"}</button>
     </header>
     {error && <div className="error-message">{error}</div>}
@@ -171,6 +169,5 @@ export function FeatureHub({ token, mode }: { token: string; mode: Mode }) {
         <AccessControl token={token} access={data.access} onChanged={refresh} />
       </FeatureErrorBoundary>
     </>}
-    {data && mode === "wifi" && <div className="feature-grid"><article><h3>TAUC</h3><strong>{data.tauc?.configured ? "Configured" : "Configuration required"}</strong><p>SSID, password, reboot, and diagnostics controls remain permission and endpoint gated.</p></article><article><h3>Customer gateway workflow</h3><p>Open Customer 360 to resolve a gateway and view managed Wi-Fi identity.</p></article></div>}
   </section>;
 }

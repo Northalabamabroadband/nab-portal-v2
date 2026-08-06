@@ -23,7 +23,7 @@ from app.modules.incidents.service import (
 )
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build027"])
+router = APIRouter(prefix="/platform", tags=["platform-build028"])
 
 
 class CustomerNoteCreate(BaseModel):
@@ -417,7 +417,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build027",
+        "release": "2.0.0-rc1-build028",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -425,7 +425,7 @@ def capability_parity(
         "external_controls": [
             "UISP CRM remains authoritative for billing mutations.",
             "UISP NMS remains authoritative for network configuration.",
-            "MikroTik access is read-only in Build 027; router changes remain in RouterOS.",
+            "MikroTik access is read-only in Build 028; router changes remain in RouterOS.",
             "TAUC writes remain disabled until verified tenant paths are configured.",
             "Customer self-service remains gated on identity recovery and policy controls.",
         ],
@@ -437,7 +437,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build027",
+        "release": "2.0.0-rc1-build028",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -473,5 +473,8 @@ def admin_capabilities(
             "tauc_live_gateway_snapshot": "wifi-and-connected-devices",
             "tauc_network_clients": "network-id-scoped",
             "tauc_network_id_resolution": "assignment-name-or-device-identity",
+            "managed_wifi_operations": "fleet-clients-controls-and-diagnostics",
+            "managed_wifi_control_responses": "secret-redacted",
+            "managed_wifi_cache_invalidation": "after-successful-write",
         },
     }

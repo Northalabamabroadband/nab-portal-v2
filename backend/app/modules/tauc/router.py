@@ -1,11 +1,17 @@
 import asyncio
 from copy import deepcopy
+from datetime import datetime, timezone
+import re
 import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from app.core.dependencies import database_session
 from app.core.settings import get_settings
+from app.models.operations import CustomerTaucAssignment
 from app.modules.auth.dependencies import require_permission
 from app.modules.tauc.client import TAUCClient, TAUCError
 from app.modules.tauc.schemas import DeviceControlRequest, DeviceLookupRequest, WifiSettingRequest
@@ -15,6 +21,7 @@ settings = get_settings()
 _TAUC_SNAPSHOT_LOCK = asyncio.Lock()
 _TAUC_SNAPSHOT_TASKS: dict[str, asyncio.Task[dict]] = {}
 _TAUC_SNAPSHOT_CACHE: dict[str, tuple[float, dict]] = {}
+WPA_HEX_KEY = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def snapshot_cache_key(
@@ -41,6 +48,89 @@ def cacheable_snapshot(snapshot: dict) -> bool:
         marker not in warnings
         for marker in ("-70307", "rate limit", "visit count")
     )
+
+
+async def invalidate_snapshot_cache(device_id: str) -> None:
+    prefix = device_id.strip() + "|"
+    async with _TAUC_SNAPSHOT_LOCK:
+        for key in [
+            cached_key
+            for cached_key in _TAUC_SNAPSHOT_CACHE
+            if cached_key.startswith(prefix)
+        ]:
+            _TAUC_SNAPSHOT_CACHE.pop(key, None)
+
+
+def validate_ssid(value: str) -> str:
+    ssid = value.strip()
+    if not ssid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Wi-Fi name cannot be blank",
+        )
+    if len(ssid.encode("utf-8")) > 32:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Wi-Fi name must be no more than 32 UTF-8 bytes",
+        )
+    return ssid
+
+
+def validate_wifi_password(value: str) -> str:
+    if WPA_HEX_KEY.fullmatch(value):
+        return value
+    password_bytes = len(value.encode("utf-8"))
+    if 8 <= password_bytes <= 63:
+        return value
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            "Wi-Fi password must contain 8–63 characters, or exactly "
+            "64 hexadecimal characters"
+        ),
+    )
+
+
+@router.get("/fleet")
+def managed_wifi_fleet(
+    claims: Annotated[
+        dict,
+        Depends(require_permission("wifi.read")),
+    ],
+    session: Annotated[Session, Depends(database_session)],
+    limit: int = Query(default=1000, ge=1, le=2000),
+) -> dict:
+    assignments = list(session.scalars(
+        select(CustomerTaucAssignment)
+        .order_by(
+            CustomerTaucAssignment.network_name.asc(),
+            CustomerTaucAssignment.created_at.desc(),
+        )
+        .limit(limit)
+    ).all())
+    integration = TAUCClient().configuration_status()
+    controls = integration.get("controls", {})
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "integration": integration,
+        "summary": {
+            "assigned_gateways": len(assignments),
+            "managed_customers": len({
+                assignment.client_id for assignment in assignments
+            }),
+            "known_networks": len({
+                assignment.network_id
+                for assignment in assignments
+                if assignment.network_id
+            }),
+            "write_controls_ready": sum(
+                bool(value)
+                for key, value in controls.items()
+                if key != "provider_diagnostics"
+            ),
+        },
+        "items": [assignment.as_dict() for assignment in assignments],
+    }
 
 
 @router.get("/status")
@@ -166,9 +256,20 @@ async def network_lookup(
     return {"network": result}
 
 
-async def _run_control(action):
+async def _run_control(
+    action,
+    *,
+    device_id: str,
+    action_name: str,
+):
     try:
-        return {"result": await action}
+        await action
+        await invalidate_snapshot_cache(device_id)
+        return {
+            "ok": True,
+            "action": action_name,
+            "device_id": device_id,
+        }
     except TAUCError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
@@ -176,22 +277,56 @@ async def _run_control(action):
 @router.post("/controls/wifi/ssid")
 async def set_wifi_ssid(payload: WifiSettingRequest, claims: Annotated[dict, Depends(require_permission("wifi.write"))]) -> dict:
     client = TAUCClient()
-    return await _run_control(client.set_wifi_ssid(payload.device_id, payload.value))
+    return await _run_control(
+        client.set_wifi_ssid(
+            payload.device_id,
+            validate_ssid(payload.value),
+            payload.network_id or "",
+        ),
+        device_id=payload.device_id,
+        action_name="wifi.ssid.update",
+    )
 
 
 @router.post("/controls/wifi/password")
 async def set_wifi_password(payload: WifiSettingRequest, claims: Annotated[dict, Depends(require_permission("wifi.write"))]) -> dict:
     client = TAUCClient()
-    return await _run_control(client.set_wifi_password(payload.device_id, payload.value))
+    return await _run_control(
+        client.set_wifi_password(
+            payload.device_id,
+            validate_wifi_password(payload.value),
+            payload.network_id or "",
+        ),
+        device_id=payload.device_id,
+        action_name="wifi.password.update",
+    )
 
 
 @router.post("/controls/reboot")
 async def reboot_device(payload: DeviceControlRequest, claims: Annotated[dict, Depends(require_permission("wifi.write"))]) -> dict:
     client = TAUCClient()
-    return await _run_control(client.reboot(payload.device_id))
+    return await _run_control(
+        client.reboot(payload.device_id, payload.network_id or ""),
+        device_id=payload.device_id,
+        action_name="gateway.reboot",
+    )
 
 
 @router.post("/controls/diagnostics")
 async def run_diagnostics(payload: DeviceControlRequest, claims: Annotated[dict, Depends(require_permission("wifi.read"))]) -> dict:
     client = TAUCClient()
-    return await _run_control(client.diagnostics(payload.device_id))
+    try:
+        return {
+            "result": await client.diagnostics(
+                payload.device_id,
+                network_id=payload.network_id or "",
+                network_name=payload.network_name or "",
+                serial_number=payload.serial_number or "",
+                mac_address=payload.mac_address or "",
+            )
+        }
+    except TAUCError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
