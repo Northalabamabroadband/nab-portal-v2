@@ -23,7 +23,7 @@ from app.modules.incidents.service import (
 )
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build025"])
+router = APIRouter(prefix="/platform", tags=["platform-build027"])
 
 
 class CustomerNoteCreate(BaseModel):
@@ -417,7 +417,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build025",
+        "release": "2.0.0-rc1-build027",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -425,7 +425,7 @@ def capability_parity(
         "external_controls": [
             "UISP CRM remains authoritative for billing mutations.",
             "UISP NMS remains authoritative for network configuration.",
-            "MikroTik access is read-only in Build 025; router changes remain in RouterOS.",
+            "MikroTik access is read-only in Build 027; router changes remain in RouterOS.",
             "TAUC writes remain disabled until verified tenant paths are configured.",
             "Customer self-service remains gated on identity recovery and policy controls.",
         ],
@@ -437,7 +437,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build025",
+        "release": "2.0.0-rc1-build027",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -453,6 +453,10 @@ def admin_capabilities(
             "mikrotik_routeros": "read-only-inventory-and-clients",
             "mikrotik_tls": "verified-by-default-with-private-ca-support",
             "mikrotik_network_neighbors": "dhcp-and-arp-merged",
+            "mikrotik_fleet": "mounted-secret-profiles",
+            "mikrotik_collector": "redis-leased-single-poller-per-router",
+            "mikrotik_live_fanout": "redis-pubsub-to-websocket",
+            "mikrotik_history": "redis-live-and-postgresql-minute-rollups",
             "mikrotik_customer_assignment": False,
             "desktop_sync": "api-key-authenticated-and-postgresql-backed",
             "desktop_sync_work_orders": "shared-portal-source-of-truth",
