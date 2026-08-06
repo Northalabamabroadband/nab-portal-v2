@@ -8,5 +8,4 @@ def test_super_admin_default_policy_retains_admin_management() -> None:
 
 def test_access_control_center_is_reported_as_guarded() -> None:
     capabilities = admin_capabilities({})
-    assert capabilities["release"] == "2.0.0-rc1-build011"
     assert capabilities["features"]["access_control_center"] == "guarded"

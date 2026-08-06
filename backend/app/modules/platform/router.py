@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import database_session
 from app.models.observability import OperationalAlert
-from app.models.operations import InventoryItem, SupportTicket, WorkOrder
+from app.models.operations import CustomerNote, CustomerTaucAssignment, InventoryItem, SupportTicket, WorkOrder
 from app.modules.auth.dependencies import require_permission
 from app.modules.auth.service import DEFAULT_PERMISSIONS, DEFAULT_ROLES
 from app.modules.customer360.service import customer_360
@@ -22,7 +23,11 @@ from app.modules.incidents.service import (
 )
 from app.modules.networkcenter.service import overview, topology
 
-router = APIRouter(prefix="/platform", tags=["platform-build009"])
+router = APIRouter(prefix="/platform", tags=["platform-build025"])
+
+
+class CustomerNoteCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
 
 
 
@@ -247,6 +252,33 @@ def operations_report(
     }
 
 
+@router.post("/customers/{client_id}/notes", status_code=201)
+def create_customer_note(
+    client_id: str,
+    payload: CustomerNoteCreate,
+    claims: Annotated[dict, Depends(require_permission("customers.write"))],
+    session: Annotated[Session, Depends(database_session)],
+) -> dict:
+    body = payload.body.strip()
+    if not body:
+        raise HTTPException(status_code=422, detail="Note cannot be blank")
+    note = CustomerNote(
+        client_id=client_id,
+        body=body,
+        author_email=str(claims.get("email") or claims.get("sub") or "unknown"),
+    )
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return {
+        "id": note.id,
+        "client_id": note.client_id,
+        "body": note.body,
+        "author_email": note.author_email,
+        "created_at": note.created_at,
+    }
+
+
 @router.get("/customers/{client_id}/workspace")
 async def customer_workspace(
     client_id: str,
@@ -266,10 +298,83 @@ async def customer_workspace(
         .order_by(WorkOrder.created_at.desc())
         .limit(100)
     ).all())
+    notes = list(session.scalars(
+        select(CustomerNote)
+        .where(CustomerNote.client_id == client_id)
+        .order_by(CustomerNote.created_at.desc())
+        .limit(100)
+    ).all())
+    assignments = list(session.scalars(
+        select(CustomerTaucAssignment)
+        .where(CustomerTaucAssignment.client_id == client_id)
+        .order_by(CustomerTaucAssignment.created_at.asc())
+    ).all())
     customer["support"] = {
         "tickets": [{"id": x.id, "subject": x.subject, "status": x.status, "priority": x.priority} for x in tickets],
         "workorders": [{"id": x.id, "title": x.title, "status": x.status, "scheduled_for": x.scheduled_for} for x in orders],
     }
+    customer["tauc_devices"] = [assignment.as_dict() for assignment in assignments]
+    if assignments:
+        primary = assignments[0]
+        customer["gateway"] = {
+            "source": "customer_assignment",
+            "device": {
+                "deviceId": primary.tauc_device_id,
+                "deviceModel": primary.device_model,
+                "sn": primary.serial_number,
+                "mac": primary.mac_address,
+                "fwVersion": primary.firmware_version,
+            },
+            "network": {
+                "networkId": primary.network_id,
+                "networkName": primary.network_name,
+            },
+        }
+        customer.pop("gateway_error", None)
+    activity = [
+        {
+            "id": x.id,
+            "kind": "note",
+            "title": "Internal account note",
+            "detail": x.body,
+            "status": "",
+            "actor": x.author_email,
+            "occurred_at": x.created_at,
+        }
+        for x in notes
+    ]
+    activity.extend({
+        "id": x.id,
+        "kind": "ticket",
+        "title": x.subject,
+        "detail": f"Support ticket · {x.priority} priority",
+        "status": x.status,
+        "actor": x.created_by,
+        "occurred_at": x.created_at,
+    } for x in tickets)
+    activity.extend({
+        "id": x.id,
+        "kind": "workorder",
+        "title": x.title,
+        "detail": x.service_address or "Field work order",
+        "status": x.status,
+        "actor": x.created_by,
+        "occurred_at": x.created_at,
+    } for x in orders)
+    activity.extend({
+        "id": x.id,
+        "kind": "device",
+        "title": "TAUC device assigned",
+        "detail": f"{x.device_model or 'Gateway'} · SN {x.serial_number}",
+        "status": "assigned",
+        "actor": x.assigned_by,
+        "occurred_at": x.created_at,
+    } for x in assignments)
+    customer["activity"] = sorted(
+        activity,
+        key=lambda item: item["occurred_at"],
+        reverse=True,
+    )[:200]
     return customer
 
 
@@ -302,6 +407,7 @@ def capability_parity(
         {"domain": "Work orders and dispatch", "read": True, "write": True, "source": "V2 shared operations"},
         {"domain": "Inventory", "read": True, "write": True, "source": "V2 shared operations"},
         {"domain": "Network telemetry", "read": True, "write": False, "source": "UISP NMS authoritative"},
+        {"domain": "Core routing infrastructure", "read": True, "write": False, "source": "MikroTik RouterOS REST · internal NOC only"},
         {"domain": "Outages and incidents", "read": True, "write": True, "source": "UISP NMS + response dispatch"},
         {"domain": "Fiber assets and mapping", "read": True, "write": True, "source": "V2 fiber services"},
         {"domain": "Managed Wi-Fi", "read": True, "write": "configuration-gated", "source": "TAUC"},
@@ -310,7 +416,7 @@ def capability_parity(
         {"domain": "Customer self-service", "read": "preview", "write": False, "source": "activation controls required"},
     ]
     return {
-        "release": "2.0.0-rc1-build011",
+        "release": "2.0.0-rc1-build025",
         "basis": "Available repository contracts; no external V1 source was present for direct comparison.",
         "capabilities": capabilities,
         "interactive_domains": sum(row["write"] is True for row in capabilities),
@@ -318,6 +424,7 @@ def capability_parity(
         "external_controls": [
             "UISP CRM remains authoritative for billing mutations.",
             "UISP NMS remains authoritative for network configuration.",
+            "MikroTik access is read-only in Build 025; router changes remain in RouterOS.",
             "TAUC writes remain disabled until verified tenant paths are configured.",
             "Customer self-service remains gated on identity recovery and policy controls.",
         ],
@@ -329,7 +436,7 @@ def admin_capabilities(
     claims: Annotated[dict, Depends(require_permission("admin.manage"))],
 ) -> dict:
     return {
-        "release": "2.0.0-rc1-build011",
+        "release": "2.0.0-rc1-build025",
         "permissions": DEFAULT_PERMISSIONS,
         "roles": DEFAULT_ROLES,
         "features": {
@@ -342,10 +449,22 @@ def admin_capabilities(
             "tauc_controls": "configuration-gated",
             "crm_workflows": True,
             "network_topology": True,
+            "mikrotik_routeros": "read-only-inventory-and-clients",
+            "mikrotik_tls": "verified-by-default-with-private-ca-support",
+            "mikrotik_network_neighbors": "dhcp-and-arp-merged",
+            "mikrotik_customer_assignment": False,
             "field_operations": True,
             "customer_portal": "admin-preview",
             "reporting": True,
             "role_administration": True,
             "access_control_center": "guarded",
+            "customer_activity_timeline": True,
+            "tauc_customer_assignments": "durable-and-unique",
+            "tauc_request_throttle": "one-per-second-with-safe-get-retry",
+            "tauc_rate_limit_cooldown": "global-three-second-backoff",
+            "tauc_snapshot_coalescing": "in-flight-and-short-cache",
+            "tauc_live_gateway_snapshot": "wifi-and-connected-devices",
+            "tauc_network_clients": "network-id-scoped",
+            "tauc_network_id_resolution": "assignment-name-or-device-identity",
         },
     }

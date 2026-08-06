@@ -36,6 +36,7 @@ venv/
 
 # Docker
 docker-data/
+backups/
 
 # OS
 .DS_Store

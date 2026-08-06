@@ -15,6 +15,9 @@ type ServiceStatus = {
   private_key_present?: boolean;
   access_key_configured?: boolean;
   secret_key_configured?: boolean;
+  tls_verification?: boolean;
+  ca_certificate_configured?: boolean;
+  mode?: string;
   test_device?: Record<string, unknown>;
   test_network?: Record<string, unknown>;
 };
@@ -23,6 +26,7 @@ type HealthResponse = {
   uisp_crm: ServiceStatus;
   uisp_nms: ServiceStatus;
   tauc: ServiceStatus;
+  mikrotik: ServiceStatus;
   configuration: Record<string, unknown>;
 };
 
@@ -35,13 +39,13 @@ function ServiceCard({
   status: ServiceStatus;
 }) {
   const state =
-    status.connected === true
+    !status.configured
+      ? "missing"
+      : status.connected === true
       ? "connected"
       : status.connected === false
       ? "failed"
-      : status.configured
-      ? "configured"
-      : "missing";
+      : "configured";
 
   return (
     <article className={`integration-card ${state}`}>
@@ -69,6 +73,10 @@ function ServiceCard({
         {status.private_key_present !== undefined && (
           <div><dt>Private key</dt><dd>{status.private_key_present ? "Present" : "Missing"}</dd></div>
         )}
+        {status.tls_verification !== undefined && (
+          <div><dt>TLS verification</dt><dd>{status.tls_verification ? "Required" : "Disabled"}</dd></div>
+        )}
+        {status.mode && <div><dt>Portal mode</dt><dd>{status.mode}</dd></div>}
       </dl>
 
       {status.detail && <p className="integration-detail">{status.detail}</p>}
@@ -112,7 +120,7 @@ export function IntegrationHealth({ token }: { token: string }) {
       <div className="integration-header">
         <div>
           <p className="eyebrow">CORE INTEGRATIONS</p>
-          <h2>UISP CRM, UISP NMS & TAUC</h2>
+          <h2>UISP CRM, UISP NMS, TAUC & MikroTik</h2>
           <p>Live configuration and endpoint diagnostics for the portal's core systems.</p>
         </div>
         <button onClick={load}>{working ? "Testing…" : "Run diagnostics"}</button>
@@ -126,6 +134,7 @@ export function IntegrationHealth({ token }: { token: string }) {
             <ServiceCard title="UISP CRM" status={data.uisp_crm} />
             <ServiceCard title="UISP NMS" status={data.uisp_nms} />
             <ServiceCard title="TP-Link TAUC" status={data.tauc} />
+            <ServiceCard title="MikroTik NOC" status={data.mikrotik} />
           </>
         )}
       </div>
