@@ -73,7 +73,7 @@ def test_build030_routes_and_capabilities() -> None:
     assert "/api/v2/platform/incidents/{incident_id}/dispatch" in paths
 
     capabilities = admin_capabilities({})
-    assert capabilities["release"] == "2.0.0-rc1-build030"
+    assert capabilities["release"] == "2.0.0-rc1-build031"
     assert capabilities["features"]["incident_command_workspace"] == (
         "outages-tickets-and-workorders"
     )

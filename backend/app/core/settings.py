@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "production"
     app_name: str = "NAB Mission Control"
-    app_version: str = "2.0.0-rc1-build030"
+    app_version: str = "2.0.0-rc1-build031"
     app_secret_key: str
     database_url: str
     redis_url: str
@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     uisp_crm_payments_path: str = "/crm/api/v1.0/payments"
     uisp_nms_devices_path: str = "/nms/api/v2.1/devices"
     uisp_nms_sites_path: str = "/nms/api/v2.1/sites"
+    network_uisp_cache_seconds: float = 15.0
+    network_dashboard_poll_seconds: int = 15
 
     mikrotik_base_url: str = ""
     mikrotik_username: str = ""

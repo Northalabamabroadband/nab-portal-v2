@@ -1,6 +1,6 @@
 import asyncio
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
 import time
 from typing import Annotated
@@ -59,6 +59,59 @@ async def invalidate_snapshot_cache(device_id: str) -> None:
             if cached_key.startswith(prefix)
         ]:
             _TAUC_SNAPSHOT_CACHE.pop(key, None)
+
+
+async def cached_snapshot_polling_status() -> dict[str, dict]:
+    now = time.monotonic()
+    statuses: dict[str, dict] = {}
+    async with _TAUC_SNAPSHOT_LOCK:
+        expired: list[str] = []
+        for key, (expires_at, snapshot) in _TAUC_SNAPSHOT_CACHE.items():
+            if expires_at <= now:
+                expired.append(key)
+                continue
+            device_id = key.split("|", 1)[0]
+            current = statuses.get(device_id)
+            remaining = max(0.0, expires_at - now)
+            if current and current["cache_remaining_seconds"] >= remaining:
+                continue
+            connected_devices = snapshot.get("connected_devices", [])
+            wifi_networks = snapshot.get("wifi_networks", [])
+            warnings = snapshot.get("warnings", [])
+            cache_age = max(
+                0.0,
+                settings.tauc_snapshot_cache_seconds - remaining,
+            )
+            statuses[device_id] = {
+                "status": str(snapshot.get("status") or "ready"),
+                "network_id": snapshot.get("network_id"),
+                "network_name": snapshot.get("network_name"),
+                "connected_devices": (
+                    len(connected_devices)
+                    if isinstance(connected_devices, list)
+                    else 0
+                ),
+                "wifi_networks": (
+                    len(wifi_networks)
+                    if isinstance(wifi_networks, list)
+                    else 0
+                ),
+                "warning_count": (
+                    len(warnings) if isinstance(warnings, list) else 0
+                ),
+                "generated_at": (
+                    snapshot.get("generated_at")
+                    or (
+                        datetime.now(timezone.utc)
+                        - timedelta(seconds=cache_age)
+                    ).isoformat()
+                ),
+                "cache_age_seconds": round(cache_age, 2),
+                "cache_remaining_seconds": round(remaining, 2),
+            }
+        for key in expired:
+            _TAUC_SNAPSHOT_CACHE.pop(key, None)
+    return statuses
 
 
 def validate_ssid(value: str) -> str:
