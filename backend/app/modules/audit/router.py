@@ -6,19 +6,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.dependencies import database_session
 from app.models.observability import AuditEvent
 from app.modules.auth.dependencies import require_permission
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 
-
-def database_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 @router.get("")

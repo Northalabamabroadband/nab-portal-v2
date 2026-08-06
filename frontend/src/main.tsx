@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { apiRequest } from "./api";
+import { BRAND } from "./brand";
 import { FeatureHub } from "./featureHub";
 import "./styles.build005.css";
 import { createRoot } from "react-dom/client";
@@ -81,34 +83,6 @@ type LiveSummary = {
   tauc: Record<string, unknown>;
 };
 
-const API = "/api/v2";
-
-async function apiRequest<T>(
-  path: string,
-  options: RequestInit = {},
-  token?: string
-): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
-
-  if (options.body) headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const response = await fetch(`${API}${path}`, {
-    ...options,
-    headers,
-    credentials: "include"
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || `Request failed: ${response.status}`);
-  }
-
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
-}
-
 function LoginPage({
   onLogin
 }: {
@@ -142,8 +116,8 @@ function LoginPage({
       <section className="login-card">
         <div className="brand-mark"><img src="/nab-logo.svg" alt="North Alabama Broadband" /></div>
         <p className="eyebrow">NORTH ALABAMA BROADBAND</p>
-        <h1>NAB COMMAND POST</h1>
-        <p className="muted">Secure network operations access</p>
+        <h1>{BRAND.product}</h1>
+        <p className="muted">Secure access to the broadband flight deck</p>
 
         <form onSubmit={submit}>
           <label>
@@ -174,7 +148,7 @@ function LoginPage({
           </button>
         </form>
 
-        <small>Built for North Alabama. Connected for What’s Next.</small>
+        <small>{BRAND.tagline}</small>
       </section>
     </main>
   );
@@ -261,6 +235,13 @@ function CustomerView({
 }) {
   const [data, setData] = useState<Customer360 | null>(null);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionBusy, setActionBusy] = useState("");
+  const [ticketSubject, setTicketSubject] = useState("");
+  const [workTitle, setWorkTitle] = useState("");
+  const [ssid, setSsid] = useState("");
+  const [wifiPassword, setWifiPassword] = useState("");
 
   useEffect(() => {
     setData(null);
@@ -272,6 +253,27 @@ function CustomerView({
         setError(caught instanceof Error ? caught.message : "Unable to load customer")
       );
   }, [clientId, token]);
+
+
+  const runAction = async (label: string, path: string, body: Record<string, unknown> = {}) => {
+    setActionBusy(label); setActionError(""); setActionMessage("");
+    try {
+      await apiRequest(path, { method: "POST", body: JSON.stringify(body) }, token);
+      setActionMessage(`${label} completed successfully.`);
+      if (label === "Support ticket") setTicketSubject("");
+      if (label === "Field work order") setWorkTitle("");
+      const refreshed = await apiRequest<Customer360>(
+        `/platform/customers/${clientId}/workspace`,
+        {},
+        token
+      );
+      setData(refreshed);
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : `${label} failed`);
+    } finally {
+      setActionBusy("");
+    }
+  };
 
   if (error) {
     return (
@@ -292,6 +294,7 @@ function CustomerView({
 
   const device = data.gateway?.device || {};
   const network = data.gateway?.network || {};
+  const deviceId = String(device.deviceId || device.id || device.device_id || "");
 
   return (
     <section className="customer360-shell">
@@ -330,6 +333,40 @@ function CustomerView({
           detail="Provisioned services"
         />
       </div>
+
+      <section className="customer-action-center">
+        <div className="panel-heading"><div><p className="eyebrow">CUSTOMER ACTION CENTER</p><h3>Resolve service from one workspace</h3></div></div>
+        {actionError && <div className="error-message">{actionError}</div>}
+        {actionMessage && <div className="dispatch-message">{actionMessage}</div>}
+        <div className="customer-action-grid">
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Support ticket", "/tickets", { client_id: data.client_id, subject: ticketSubject, description: `Opened from Customer 360 for ${data.name}`, priority: "high" }); }}>
+            <h4>Open support ticket</h4>
+            <input required minLength={3} value={ticketSubject} onChange={event => setTicketSubject(event.target.value)} placeholder="Issue summary" />
+            <button disabled={Boolean(actionBusy)}>{actionBusy === "Support ticket" ? "Opening…" : "Open ticket"}</button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Field work order", "/workorders", { client_id: data.client_id, title: workTitle, description: `Dispatched from Customer 360 for ${data.name}`, priority: "high", service_address: data.address || null }); }}>
+            <h4>Dispatch field work</h4>
+            <input required minLength={3} value={workTitle} onChange={event => setWorkTitle(event.target.value)} placeholder="Work required" />
+            <button disabled={Boolean(actionBusy)}>{actionBusy === "Field work order" ? "Dispatching…" : "Create work order"}</button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Wi-Fi name update", "/tauc/controls/wifi/ssid", { device_id: deviceId, value: ssid }); }}>
+            <h4>Update Wi-Fi name</h4>
+            <input required disabled={!deviceId} value={ssid} onChange={event => setSsid(event.target.value)} placeholder={deviceId ? "New SSID" : "Gateway ID unavailable"} />
+            <button disabled={Boolean(actionBusy) || !deviceId}>Apply SSID</button>
+          </form>
+          <form onSubmit={(event) => { event.preventDefault(); runAction("Wi-Fi password update", "/tauc/controls/wifi/password", { device_id: deviceId, value: wifiPassword }); }}>
+            <h4>Update Wi-Fi password</h4>
+            <input required minLength={8} type="password" disabled={!deviceId} value={wifiPassword} onChange={event => setWifiPassword(event.target.value)} placeholder={deviceId ? "New password" : "Gateway ID unavailable"} />
+            <button disabled={Boolean(actionBusy) || !deviceId}>Apply password</button>
+          </form>
+          <div className="gateway-actions">
+            <h4>Gateway maintenance</h4>
+            <button disabled={Boolean(actionBusy) || !deviceId} onClick={() => runAction("Gateway diagnostics", "/tauc/controls/diagnostics", { device_id: deviceId })}>Run diagnostics</button>
+            <button className="danger-action" disabled={Boolean(actionBusy) || !deviceId} onClick={() => { if (window.confirm("Reboot this customer gateway now?")) runAction("Gateway reboot", "/tauc/controls/reboot", { device_id: deviceId }); }}>Reboot gateway</button>
+          </div>
+        </div>
+        <p className="muted">TAUC write actions remain permission-checked and configuration-gated by verified tenant endpoint paths.</p>
+      </section>
 
       <div className="dashboard-grid">
         <article className="panel large">
@@ -401,7 +438,7 @@ function Dashboard({
   const [summary, setSummary] = useState<LiveSummary | null>(null);
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activePage, setActivePage] = useState("Command Post");
+  const [activePage, setActivePage] = useState("Mission Control");
   const [liveState, setLiveState] = useState("Connecting");
 
   useEffect(() => {
@@ -444,30 +481,32 @@ function Dashboard({
         <div className="sidebar-brand">
           <div className="brand-mark small"><img src="/nab-logo.svg" alt="North Alabama Broadband" /></div>
           <div>
-            <strong>COMMAND POST</strong>
-            <span>Portal v2</span>
+            <strong>MISSION CONTROL</strong>
+            <span>Rocket City Operations</span>
           </div>
         </div>
 
         <nav>
           {[
-            ["⌂", "Command Post"],
+            ["⌂", "Mission Control"],
+            ["◆", "Incident Command"],
             ["◉", "Customers"],
-            ["⌁", "Managed WiFi"],
+            ["⌁", "Managed Wi-Fi"],
             ["⌘", "Network"],
-            ["⌬", "Network Intelligence"],
+            ["⌬", "Network Telemetry"],
             ["⌇", "Fiber"],
             ["⌖", "Fiber Map"],
             ["!", "Outages"],
-            ["⚠", "Alerts"],
-            ["⚒", "Field Operations"],
+            ["⚠", "Flight Alerts"],
+            ["⚒", "Ground Crew"],
             ["$", "Billing"],
-            ["▣", "Inventory"],
-            ["↗", "Analytics"],
+            ["▣", "Operations Suite"],
+            ["↗", "Mission Reports"],
             ["✓", "Audit"],
-            ["⇄", "Integrations"],
-            ["◎", "Customer Portal"],
-            ["⚙", "Settings"]
+            ["⇄", "Systems Check"],
+            ["◎", "Subscriber Portal"],
+            ["≡", "Capability Parity"],
+            ["⚙", "Access Control"]
           ].map(([icon, label]) => (
             <button
               key={label}
@@ -507,8 +546,8 @@ function Dashboard({
             ☰
           </button>
           <div>
-            <p className="eyebrow">NETWORK OPERATIONS</p>
-            <h1>NAB COMMAND POST</h1>
+            <p className="eyebrow">BROADBAND FLIGHT OPERATIONS</p>
+            <h1>{BRAND.product}</h1>
           </div>
           <div className="topbar-actions">
             <span className="live-chip"><i /> {liveState}</span>
@@ -525,41 +564,45 @@ function Dashboard({
               setActivePage("Customers");
             }}
           />
+        ) : activePage === "Incident Command" ? (
+          <FeatureHub token={token} mode="incidents" />
         ) : activePage === "Fiber Map" ? (
           <FiberMap token={token} />
         ) : activePage === "Fiber" ? (
           <FiberOperations token={token} />
-        ) : activePage === "Integrations" ? (
+        ) : activePage === "Systems Check" ? (
           <IntegrationHealth token={token} />
         ) : activePage === "Network" ? (
           <NetworkOperationsCenter token={token} />
-        ) : activePage === "Network Intelligence" ? (
+        ) : activePage === "Network Telemetry" ? (
           <FeatureHub token={token} mode="network" />
         ) : activePage === "Billing" ? (
           <BillingCenter token={token} />
-        ) : activePage === "Alerts" ? (
+        ) : activePage === "Flight Alerts" ? (
           <AlertCenter token={token} />
         ) : activePage === "Audit" ? (
           <AuditCenter token={token} />
-        ) : activePage === "Field Operations" ? (
+        ) : activePage === "Ground Crew" ? (
           <FeatureHub token={token} mode="field" />
-        ) : activePage === "Inventory" ? (
+        ) : activePage === "Operations Suite" ? (
           <OperationsWorkspace token={token} />
         ) : activePage === "Outages" ? (
           <FeatureHub token={token} mode="outages" />
-        ) : activePage === "Analytics" ? (
+        ) : activePage === "Mission Reports" ? (
           <FeatureHub token={token} mode="reports" />
-        ) : activePage === "Managed WiFi" ? (
+        ) : activePage === "Managed Wi-Fi" ? (
           <FeatureHub token={token} mode="wifi" />
-        ) : activePage === "Customer Portal" ? (
+        ) : activePage === "Subscriber Portal" ? (
           <FeatureHub token={token} mode="portal" />
-        ) : activePage === "Settings" ? (
+        ) : activePage === "Capability Parity" ? (
+          <FeatureHub token={token} mode="parity" />
+        ) : activePage === "Access Control" ? (
           <FeatureHub token={token} mode="admin" />
-        ) : activePage !== "Command Post" && activePage !== "Customers" ? (
+        ) : activePage !== "Mission Control" && activePage !== "Customers" ? (
           <section className="panel">
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">NAB COMMAND POST</p>
+                <p className="eyebrow">NAB MISSION CONTROL</p>
                 <h3>{activePage}</h3>
               </div>
             </div>
@@ -572,15 +615,15 @@ function Dashboard({
           <>
             <section className="hero-panel">
               <div>
-                <p className="eyebrow">LIVE OPERATIONS</p>
-                <h2>North Alabama Broadband Network</h2>
-                <p>UISP, TAUC, Customer 360, and live Command Post data are integrated.</p>
+                <p className="eyebrow">LIVE TELEMETRY</p>
+                <h2>North Alabama Broadband Flight Deck</h2>
+                <p>UISP, TAUC, Customer 360, and live telemetry are integrated.</p>
               </div>
               <span className="live-chip"><i /> {summary?.status || "Operational"}</span>
             </section>
 
             <section className="metrics">
-              <Metric label="Network status" value={summary?.status || "Operational"} detail="Live integration health" />
+              <Metric label="Network status" value={summary?.status || "Operational"} detail="Live systems readiness" />
               <Metric label="Active outages" value={String(summary?.active_outages ?? 0)} detail="Customer-impacting events" />
               <Metric label="Customers affected" value={String(summary?.customers_affected ?? 0)} detail="Current impact" />
               <Metric label="Open tickets" value={String(summary?.open_tickets ?? 0)} detail="Support workload" />

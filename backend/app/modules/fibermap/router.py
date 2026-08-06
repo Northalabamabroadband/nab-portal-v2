@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+from app.core.dependencies import database_session
 from app.models.fiber import FiberAsset, FiberRoute
 from app.models.fiber_map import FiberRouteGeometry
 from app.modules.auth.dependencies import require_permission
@@ -15,13 +15,6 @@ from app.modules.fibermap.schemas import RouteGeometryWrite
 
 router = APIRouter(prefix="/fiber-map", tags=["fiber-map"])
 
-
-def database_session():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 def asset_feature(asset: FiberAsset) -> dict:
