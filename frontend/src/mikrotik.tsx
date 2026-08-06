@@ -1,4 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import { request } from "./api";
 
 type RouterStatus = {
@@ -42,6 +48,51 @@ type RouterSnapshot = {
   warnings: string[];
 };
 
+type ThroughputCounter = {
+  id: string;
+  name: string;
+  running: boolean;
+  disabled: boolean;
+  rx_bytes: number;
+  tx_bytes: number;
+};
+
+type ThroughputResponse = {
+  generated_at: string;
+  poll_interval_seconds: number;
+  mode: string;
+  count: number;
+  interfaces: ThroughputCounter[];
+  missing: string[];
+};
+
+type InterfaceRate = {
+  rx: number;
+  tx: number;
+};
+
+type RatePoint = {
+  timestamp: number;
+  rates: Record<string, InterfaceRate>;
+};
+
+type PreviousCounters = {
+  timestamp: number;
+  counters: Record<string, { rx: number; tx: number }>;
+};
+
+const THROUGHPUT_POLL_MS = 3000;
+const MAX_THROUGHPUT_POINTS = 120;
+const MAX_SELECTED_INTERFACES = 6;
+const CHART_COLORS = [
+  "#38bdf8",
+  "#34d399",
+  "#fbbf24",
+  "#f472b6",
+  "#a78bfa",
+  "#fb7185"
+];
+
 function textValue(value: unknown, fallback = "—"): string {
   if (value === null || value === undefined || value === "") return fallback;
   return String(value);
@@ -65,6 +116,22 @@ function formatBytes(value: unknown): string {
   return scaled.toFixed(scaled >= 10 ? 1 : 2) + " " + units[unit];
 }
 
+function formatBitsPerSecond(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 bps";
+  const units = ["bps", "Kbps", "Mbps", "Gbps", "Tbps"];
+  let scaled = value;
+  let unit = 0;
+  while (scaled >= 1000 && unit < units.length - 1) {
+    scaled /= 1000;
+    unit += 1;
+  }
+  return (
+    scaled.toFixed(scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2) +
+    " " +
+    units[unit]
+  );
+}
+
 function Stat({
   label,
   value,
@@ -83,13 +150,157 @@ function Stat({
   );
 }
 
+function ThroughputChart({
+  title,
+  direction,
+  history,
+  selectedInterfaces
+}: {
+  title: string;
+  direction: "rx" | "tx";
+  history: RatePoint[];
+  selectedInterfaces: string[];
+}) {
+  const width = 720;
+  const height = 260;
+  const left = 68;
+  const right = 16;
+  const top = 16;
+  const bottom = 34;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const latest = history.length ? history[history.length - 1] : null;
+
+  const ceiling = useMemo(() => {
+    const peak = Math.max(
+      1,
+      ...history.flatMap(point =>
+        selectedInterfaces.map(name => point.rates[name]?.[direction] || 0)
+      )
+    );
+    const magnitude = 10 ** Math.floor(Math.log10(peak));
+    return Math.max(1, Math.ceil(peak / magnitude) * magnitude);
+  }, [direction, history, selectedInterfaces]);
+
+  const xFor = (index: number) => (
+    left +
+    (history.length <= 1 ? 0 : index / (history.length - 1)) * plotWidth
+  );
+  const yFor = (value: number) => (
+    top + plotHeight - Math.min(1, Math.max(0, value / ceiling)) * plotHeight
+  );
+
+  return (
+    <article className="throughput-chart">
+      <header>
+        <div>
+          <p className="eyebrow">{direction === "rx" ? "DOWNLOAD / RX" : "UPLOAD / TX"}</p>
+          <h4>{title}</h4>
+        </div>
+        <strong>
+          {formatBitsPerSecond(
+            selectedInterfaces.reduce(
+              (total, name) => total + (latest?.rates[name]?.[direction] || 0),
+              0
+            )
+          )}
+        </strong>
+      </header>
+
+      <div className="throughput-chart-frame">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label={`${title} for selected MikroTik interfaces`}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {[0, 0.25, 0.5, 0.75, 1].map(fraction => {
+            const y = top + plotHeight - fraction * plotHeight;
+            return (
+              <g key={fraction}>
+                <line
+                  className="throughput-grid-line"
+                  x1={left}
+                  x2={width - right}
+                  y1={y}
+                  y2={y}
+                />
+                <text className="throughput-axis-label" x={left - 8} y={y + 4}>
+                  {formatBitsPerSecond(ceiling * fraction)}
+                </text>
+              </g>
+            );
+          })}
+
+          {selectedInterfaces.map((name, interfaceIndex) => {
+            const points = history
+              .map((point, pointIndex) => (
+                `${xFor(pointIndex)},${yFor(point.rates[name]?.[direction] || 0)}`
+              ))
+              .join(" ");
+            return (
+              <polyline
+                key={name}
+                className="throughput-series"
+                points={points}
+                stroke={CHART_COLORS[interfaceIndex % CHART_COLORS.length]}
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })}
+
+          {history.length > 0 && (
+            <>
+              <text className="throughput-time-label" x={left} y={height - 8}>
+                {new Date(history[0].timestamp).toLocaleTimeString()}
+              </text>
+              <text
+                className="throughput-time-label end"
+                x={width - right}
+                y={height - 8}
+              >
+                {new Date(history[history.length - 1].timestamp).toLocaleTimeString()}
+              </text>
+            </>
+          )}
+        </svg>
+
+        {history.length < 2 && (
+          <div className="throughput-chart-waiting">
+            Waiting for two live samples…
+          </div>
+        )}
+      </div>
+
+      <div className="throughput-legend">
+        {selectedInterfaces.map((name, index) => (
+          <span key={name}>
+            <i style={{ background: CHART_COLORS[index % CHART_COLORS.length] }} />
+            {name}
+            <strong>
+              {formatBitsPerSecond(latest?.rates[name]?.[direction] || 0)}
+            </strong>
+          </span>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 export function MikroTikOperations({ token }: { token: string }) {
   const [status, setStatus] = useState<RouterStatus | null>(null);
   const [snapshot, setSnapshot] = useState<RouterSnapshot | null>(null);
   const [working, setWorking] = useState(true);
   const [error, setError] = useState("");
+  const [selectedInterfaces, setSelectedInterfaces] = useState<string[]>([]);
+  const [throughputHistory, setThroughputHistory] = useState<RatePoint[]>([]);
+  const [throughputError, setThroughputError] = useState("");
+  const [throughputWorking, setThroughputWorking] = useState(false);
+  const [throughputUpdatedAt, setThroughputUpdatedAt] = useState<number | null>(null);
+  const previousCounters = useRef<PreviousCounters | null>(null);
+  const throughputRequestActive = useRef(false);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setWorking(true);
     setError("");
     try {
@@ -109,17 +320,135 @@ export function MikroTikOperations({ token }: { token: string }) {
     } finally {
       setWorking(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     void refresh();
-  }, [token]);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!snapshot) {
+      setSelectedInterfaces([]);
+      return;
+    }
+    const available = snapshot.interfaces
+      .map(row => textValue(row.name, ""))
+      .filter(Boolean);
+    setSelectedInterfaces(current => {
+      const valid = current.filter(name => available.includes(name));
+      if (valid.length) return valid.slice(0, MAX_SELECTED_INTERFACES);
+      const preferred = snapshot.interfaces
+        .filter(row => routerBoolean(row.running) && !routerBoolean(row.disabled))
+        .map(row => textValue(row.name, ""))
+        .filter(Boolean);
+      return (preferred.length ? preferred : available).slice(0, 1);
+    });
+  }, [snapshot]);
+
+  const pollThroughput = useCallback(async () => {
+    if (
+      !selectedInterfaces.length ||
+      document.hidden ||
+      throughputRequestActive.current
+    ) {
+      return;
+    }
+    throughputRequestActive.current = true;
+    setThroughputWorking(true);
+    try {
+      const query = new URLSearchParams();
+      selectedInterfaces.forEach(name => query.append("interface", name));
+      const sample = await request<ThroughputResponse>(
+        `/mikrotik/throughput?${query.toString()}`,
+        token
+      );
+      const timestamp = Date.parse(sample.generated_at) || Date.now();
+      const counters = Object.fromEntries(
+        sample.interfaces.map(row => [
+          row.name,
+          { rx: Number(row.rx_bytes), tx: Number(row.tx_bytes) }
+        ])
+      );
+      const previous = previousCounters.current;
+
+      if (previous && timestamp > previous.timestamp) {
+        const elapsedSeconds = (timestamp - previous.timestamp) / 1000;
+        const rates: Record<string, InterfaceRate> = {};
+        for (const row of sample.interfaces) {
+          const old = previous.counters[row.name];
+          if (!old) continue;
+          const rxDelta = row.rx_bytes - old.rx;
+          const txDelta = row.tx_bytes - old.tx;
+          rates[row.name] = {
+            rx: rxDelta >= 0 ? (rxDelta * 8) / elapsedSeconds : 0,
+            tx: txDelta >= 0 ? (txDelta * 8) / elapsedSeconds : 0
+          };
+        }
+        setThroughputHistory(current => [
+          ...current,
+          { timestamp, rates }
+        ].slice(-MAX_THROUGHPUT_POINTS));
+      }
+
+      previousCounters.current = { timestamp, counters };
+      setThroughputUpdatedAt(timestamp);
+      setThroughputError(
+        sample.missing.length
+          ? `RouterOS did not return: ${sample.missing.join(", ")}`
+          : ""
+      );
+    } catch (caught) {
+      setThroughputError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to poll live interface throughput"
+      );
+    } finally {
+      throughputRequestActive.current = false;
+      setThroughputWorking(false);
+    }
+  }, [selectedInterfaces, token]);
+
+  useEffect(() => {
+    previousCounters.current = null;
+    setThroughputHistory([]);
+    setThroughputError("");
+    setThroughputUpdatedAt(null);
+    if (!selectedInterfaces.length || !status?.connected) return;
+
+    void pollThroughput();
+    const interval = window.setInterval(
+      () => void pollThroughput(),
+      THROUGHPUT_POLL_MS
+    );
+    const resumeWhenVisible = () => {
+      if (!document.hidden) {
+        previousCounters.current = null;
+        void pollThroughput();
+      }
+    };
+    document.addEventListener("visibilitychange", resumeWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", resumeWhenVisible);
+    };
+  }, [pollThroughput, selectedInterfaces, status?.connected]);
+
+  const toggleInterface = (name: string) => {
+    setSelectedInterfaces(current => {
+      if (current.includes(name)) {
+        return current.filter(value => value !== name);
+      }
+      if (current.length >= MAX_SELECTED_INTERFACES) return current;
+      return [...current, name];
+    });
+  };
 
   return (
     <section className="mikrotik-center">
       <header className="mikrotik-header">
         <div>
-          <p className="eyebrow">NETWORK INFRASTRUCTURE · NOC ONLY · RC1 BUILD 025</p>
+          <p className="eyebrow">NETWORK INFRASTRUCTURE · NOC ONLY · RC1 BUILD 026</p>
           <h2>MikroTik RouterOS Infrastructure</h2>
           <p>
             Internal core, tower, POP, and backhaul-edge router health. This
@@ -208,9 +537,7 @@ export function MikroTikOperations({ token }: { token: string }) {
                   ? "—"
                   : snapshot.summary.memory_used_percent + "%"
               }
-              detail={
-                formatBytes(snapshot.resource["free-memory"]) + " free"
-              }
+              detail={formatBytes(snapshot.resource["free-memory"]) + " free"}
             />
             <Stat
               label="Interfaces"
@@ -224,10 +551,7 @@ export function MikroTikOperations({ token }: { token: string }) {
             <Stat
               label="Observed hosts"
               value={String(snapshot.summary.observed_hosts)}
-              detail={
-                snapshot.summary.dhcp_bound +
-                " bound DHCP leases"
-              }
+              detail={snapshot.summary.dhcp_bound + " bound DHCP leases"}
             />
           </div>
 
@@ -238,7 +562,7 @@ export function MikroTikOperations({ token }: { token: string }) {
                 {snapshot.warnings.length === 1 ? "" : "s"} unavailable
               </summary>
               <ul>
-                {snapshot.warnings.map((warning) => (
+                {snapshot.warnings.map(warning => (
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>
@@ -251,12 +575,18 @@ export function MikroTikOperations({ token }: { token: string }) {
                 <p className="eyebrow">INTERFACE TELEMETRY</p>
                 <h3>Router ports and traffic</h3>
               </div>
-              <span>{snapshot.interfaces.length} interfaces</span>
+              <span>
+                {selectedInterfaces.length} selected · {snapshot.interfaces.length} total
+              </span>
             </div>
+            <p className="throughput-selection-help">
+              Select up to {MAX_SELECTED_INTERFACES} ports to graph live throughput.
+            </p>
             <div className="router-table-wrap">
               <table className="router-table">
                 <thead>
                   <tr>
+                    <th>Graph</th>
                     <th>Interface</th>
                     <th>Type</th>
                     <th>State</th>
@@ -266,32 +596,51 @@ export function MikroTikOperations({ token }: { token: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {snapshot.interfaces.map((row, index) => (
-                    <tr key={textValue(row[".id"], String(index))}>
-                      <td>
-                        <strong>{textValue(row.name, "Unnamed")}</strong>
-                        <small>{textValue(row["mac-address"], "")}</small>
-                      </td>
-                      <td>{textValue(row.type)}</td>
-                      <td>
-                        <span className={
-                          "table-state " +
-                          (routerBoolean(row.running) && !routerBoolean(row.disabled)
-                            ? "online"
-                            : "offline")
-                        }>
-                          {routerBoolean(row.disabled)
-                            ? "Disabled"
-                            : routerBoolean(row.running)
-                              ? "Running"
-                              : "Down"}
-                        </span>
-                      </td>
-                      <td>{textValue(row["actual-mtu"] || row.mtu)}</td>
-                      <td>{formatBytes(row["rx-byte"])}</td>
-                      <td>{formatBytes(row["tx-byte"])}</td>
-                    </tr>
-                  ))}
+                  {snapshot.interfaces.map((row, index) => {
+                    const name = textValue(row.name, `Interface ${index + 1}`);
+                    const selected = selectedInterfaces.includes(name);
+                    return (
+                      <tr
+                        key={textValue(row[".id"], String(index))}
+                        className={selected ? "throughput-selected-row" : ""}
+                      >
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            disabled={
+                              !selected &&
+                              selectedInterfaces.length >= MAX_SELECTED_INTERFACES
+                            }
+                            aria-label={`Graph ${name}`}
+                            onChange={() => toggleInterface(name)}
+                          />
+                        </td>
+                        <td>
+                          <strong>{name}</strong>
+                          <small>{textValue(row["mac-address"], "")}</small>
+                        </td>
+                        <td>{textValue(row.type)}</td>
+                        <td>
+                          <span className={
+                            "table-state " +
+                            (routerBoolean(row.running) && !routerBoolean(row.disabled)
+                              ? "online"
+                              : "offline")
+                          }>
+                            {routerBoolean(row.disabled)
+                              ? "Disabled"
+                              : routerBoolean(row.running)
+                                ? "Running"
+                                : "Down"}
+                          </span>
+                        </td>
+                        <td>{textValue(row["actual-mtu"] || row.mtu)}</td>
+                        <td>{formatBytes(row["rx-byte"])}</td>
+                        <td>{formatBytes(row["tx-byte"])}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -364,12 +713,69 @@ export function MikroTikOperations({ token }: { token: string }) {
             </article>
           </div>
 
+          <section className="mikrotik-throughput">
+            <div className="mikrotik-panel-heading">
+              <div>
+                <p className="eyebrow">LIVE PORT THROUGHPUT</p>
+                <h3>Selected interface traffic</h3>
+                <p>
+                  Three-second read-only counter sampling · six-minute rolling window
+                </p>
+              </div>
+              <span className={throughputError ? "throughput-live failed" : "throughput-live"}>
+                <i />
+                {throughputError
+                  ? "Polling issue"
+                  : throughputWorking
+                    ? "Polling"
+                    : selectedInterfaces.length
+                      ? "Live"
+                      : "Select ports"}
+              </span>
+            </div>
+
+            {throughputError && (
+              <div className="throughput-error">{throughputError}</div>
+            )}
+
+            {selectedInterfaces.length ? (
+              <div className="throughput-grid">
+                <ThroughputChart
+                  title="Receive throughput"
+                  direction="rx"
+                  history={throughputHistory}
+                  selectedInterfaces={selectedInterfaces}
+                />
+                <ThroughputChart
+                  title="Transmit throughput"
+                  direction="tx"
+                  history={throughputHistory}
+                  selectedInterfaces={selectedInterfaces}
+                />
+              </div>
+            ) : (
+              <div className="throughput-empty">
+                Select one or more ports in the interface table to start both graphs.
+              </div>
+            )}
+
+            <footer>
+              <span>{selectedInterfaces.length} / {MAX_SELECTED_INTERFACES} ports</span>
+              <span>{throughputHistory.length} / {MAX_THROUGHPUT_POINTS} samples</span>
+              <span>
+                {throughputUpdatedAt
+                  ? `Last sample ${new Date(throughputUpdatedAt).toLocaleTimeString()}`
+                  : "Awaiting first sample"}
+              </span>
+            </footer>
+          </section>
+
           <footer className="mikrotik-footnote">
             <span>Internal NOC only</span>
             <span>Read-only · no customer assignments</span>
             <span>HTTP Basic credentials protected by TLS</span>
             <span>
-              Last poll {new Date(snapshot.generated_at).toLocaleString()}
+              Last inventory poll {new Date(snapshot.generated_at).toLocaleString()}
             </span>
           </footer>
         </>
