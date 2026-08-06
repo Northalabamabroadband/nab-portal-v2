@@ -11,6 +11,10 @@ import { MikroTikOperations } from "./mikrotik";
 import "./styles.mikrotik.css";
 import { ManagedWifiCenter } from "./managedWifi";
 import "./styles.managed-wifi.css";
+import { CustomersDirectory } from "./customersDirectory";
+import "./styles.customers-directory.css";
+import { MissionControlOverview } from "./missionControl";
+import "./styles.mission-control.css";
 import { FiberMap } from "./fiberMap";
 import "./styles.milestone12map.css";
 import { FiberOperations } from "./fiber";
@@ -38,14 +42,6 @@ type User = {
 type LoginResponse = {
   token: string;
   user: User;
-};
-
-type SearchItem = {
-  type: string;
-  id: string;
-  title: string;
-  subtitle: string;
-  status: string;
 };
 
 type CustomerActivity = {
@@ -182,76 +178,6 @@ function LoginPage({
         <small>{BRAND.tagline}</small>
       </section>
     </main>
-  );
-}
-
-function CustomerSearch({
-  token,
-  onSelect
-}: {
-  token: string;
-  onSelect: (id: string) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [items, setItems] = useState<SearchItem[]>([]);
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (query.trim().length < 2) {
-      setItems([]);
-      return;
-    }
-
-    const timer = window.setTimeout(async () => {
-      setWorking(true);
-      setError("");
-
-      try {
-        const result = await apiRequest<{
-          items: SearchItem[];
-        }>(`/search?q=${encodeURIComponent(query.trim())}`, {}, token);
-        setItems(result.items);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Search failed");
-      } finally {
-        setWorking(false);
-      }
-    }, 300);
-
-    return () => window.clearTimeout(timer);
-  }, [query, token]);
-
-  return (
-    <section className="panel customer-search">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">GLOBAL SEARCH</p>
-          <h3>Find a customer</h3>
-        </div>
-        <span>{working ? "Searching…" : `${items.length} results`}</span>
-      </div>
-
-      <input
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Name, email, phone, account number…"
-      />
-
-      {error && <div className="error-message">{error}</div>}
-
-      <div className="search-results">
-        {items.map((item) => (
-          <button key={item.id} onClick={() => onSelect(item.id)}>
-            <div>
-              <strong>{item.title}</strong>
-              <span>{item.subtitle || `UISP #${item.id}`}</span>
-            </div>
-            <small>{item.status}</small>
-          </button>
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -791,7 +717,12 @@ function Dashboard({
           <FeatureHub token={token} mode="parity" />
         ) : activePage === "Access Control" ? (
           <FeatureHub token={token} mode="admin" />
-        ) : activePage !== "Mission Control" && activePage !== "Customers" ? (
+        ) : activePage === "Customers" ? (
+          <CustomersDirectory
+            token={token}
+            onSelect={(clientId) => setSelectedClient(clientId)}
+          />
+        ) : activePage !== "Mission Control" ? (
           <section className="panel">
             <div className="panel-heading">
               <div>
@@ -805,46 +736,15 @@ function Dashboard({
             </p>
           </section>
         ) : (
-          <>
-            <section className="hero-panel">
-              <div>
-                <p className="eyebrow">LIVE TELEMETRY</p>
-                <h2>North Alabama Broadband Flight Deck</h2>
-                <p>UISP, TAUC, MikroTik infrastructure, Customer 360, and live telemetry are integrated.</p>
-              </div>
-              <span className="live-chip"><i /> {summary?.status || "Operational"}</span>
-            </section>
-
-            <section className="metrics">
-              <Metric label="Network status" value={summary?.status || "Operational"} detail="Live systems readiness" />
-              <Metric label="Active outages" value={String(summary?.active_outages ?? 0)} detail="Customer-impacting events" />
-              <Metric label="Customers affected" value={String(summary?.customers_affected ?? 0)} detail="Current impact" />
-              <Metric label="Open tickets" value={String(summary?.open_tickets ?? 0)} detail="Support workload" />
-            </section>
-
-            <div className="dashboard-grid">
-              <CustomerSearch token={token} onSelect={(id) => {
-                setActivePage("Customers");
-                setSelectedClient(id);
-              }} />
-
-              <article className="panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">INTEGRATIONS</p>
-                    <h3>Platform status</h3>
-                  </div>
-                </div>
-                <div className="readiness-list">
-                  <div><span>UISP</span><strong>{summary?.uisp?.connected ? "Connected" : "Unavailable"}</strong></div>
-                  <div><span>TAUC</span><strong>{summary?.tauc?.configured ? "Configured" : "Not configured"}</strong></div>
-                  <div><span>MikroTik Core</span><strong>{summary?.mikrotik?.connected ? "Connected" : summary?.mikrotik?.configured ? "Unavailable" : "Not configured"}</strong></div>
-                  <div><span>Customer 360</span><strong>Online</strong></div>
-                  <div><span>Live WebSocket</span><strong>{liveState}</strong></div>
-                </div>
-              </article>
-            </div>
-          </>
+          <MissionControlOverview
+            token={token}
+            liveSummary={summary}
+            onNavigate={(page) => {
+              setActivePage(page);
+              setSelectedClient(null);
+              setSidebarOpen(false);
+            }}
+          />
         )}
       </main>
     </div>
