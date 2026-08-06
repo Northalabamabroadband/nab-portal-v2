@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { FeatureHub } from "./featureHub";
+import "./styles.build005.css";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { IntegrationHealth } from "./integrations";
@@ -64,6 +66,10 @@ type Customer360 = {
     network?: Record<string, unknown>;
   } | null;
   gateway_error?: string;
+  support?: {
+    tickets: Record<string, unknown>[];
+    workorders: Record<string, unknown>[];
+  };
 };
 
 type LiveSummary = {
@@ -260,7 +266,7 @@ function CustomerView({
     setData(null);
     setError("");
 
-    apiRequest<Customer360>(`/customer360/${clientId}`, {}, token)
+    apiRequest<Customer360>(`/platform/customers/${clientId}/workspace`, {}, token)
       .then(setData)
       .catch((caught) =>
         setError(caught instanceof Error ? caught.message : "Unable to load customer")
@@ -374,6 +380,8 @@ function CustomerView({
             <div><span>Payments</span><strong>{data.billing.payments.length}</strong></div>
             <div><span>Invoices</span><strong>{data.billing.invoices.length}</strong></div>
             <div><span>Last payment</span><strong>{describePayment(data.billing.last_payment)}</strong></div>
+            <div><span>Support tickets</span><strong>{data.support?.tickets.length ?? 0}</strong></div>
+            <div><span>Work orders</span><strong>{data.support?.workorders.length ?? 0}</strong></div>
           </div>
         </article>
       </div>
@@ -447,6 +455,7 @@ function Dashboard({
             ["◉", "Customers"],
             ["⌁", "Managed WiFi"],
             ["⌘", "Network"],
+            ["⌬", "Network Intelligence"],
             ["⌇", "Fiber"],
             ["⌖", "Fiber Map"],
             ["!", "Outages"],
@@ -457,6 +466,7 @@ function Dashboard({
             ["↗", "Analytics"],
             ["✓", "Audit"],
             ["⇄", "Integrations"],
+            ["◎", "Customer Portal"],
             ["⚙", "Settings"]
           ].map(([icon, label]) => (
             <button
@@ -523,14 +533,28 @@ function Dashboard({
           <IntegrationHealth token={token} />
         ) : activePage === "Network" ? (
           <NetworkOperationsCenter token={token} />
+        ) : activePage === "Network Intelligence" ? (
+          <FeatureHub token={token} mode="network" />
         ) : activePage === "Billing" ? (
           <BillingCenter token={token} />
         ) : activePage === "Alerts" ? (
           <AlertCenter token={token} />
         ) : activePage === "Audit" ? (
           <AuditCenter token={token} />
-        ) : activePage === "Field Operations" || activePage === "Inventory" ? (
+        ) : activePage === "Field Operations" ? (
+          <FeatureHub token={token} mode="field" />
+        ) : activePage === "Inventory" ? (
           <OperationsWorkspace token={token} />
+        ) : activePage === "Outages" ? (
+          <FeatureHub token={token} mode="outages" />
+        ) : activePage === "Analytics" ? (
+          <FeatureHub token={token} mode="reports" />
+        ) : activePage === "Managed WiFi" ? (
+          <FeatureHub token={token} mode="wifi" />
+        ) : activePage === "Customer Portal" ? (
+          <FeatureHub token={token} mode="portal" />
+        ) : activePage === "Settings" ? (
+          <FeatureHub token={token} mode="admin" />
         ) : activePage !== "Command Post" && activePage !== "Customers" ? (
           <section className="panel">
             <div className="panel-heading">

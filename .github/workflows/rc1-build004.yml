@@ -1,10 +1,10 @@
-name: RC1 Build 004 Validation
+name: RC1 Build Validation
 
 on:
   push:
-    branches: [rc1-build004]
+    branches: [rc1-build004, rc1-build005]
   pull_request:
-    branches: [main]
+    branches: [main, rc1-build004]
 
 permissions:
   contents: read

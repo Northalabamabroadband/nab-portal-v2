@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "production"
     app_name: str = "North Alabama Broadband Portal v2"
-    app_version: str = "2.0.0-rc1-build004"
+    app_version: str = "2.0.0-rc1-build005"
     app_secret_key: str
     database_url: str
     redis_url: str
@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     tauc_network_clients_path: str = ""
     tauc_device_lookup_path: str = "/v1/openapi/device-information/device-id"
     tauc_network_lookup_path: str = "/v1/openapi/device-information/device-info"
+    tauc_wifi_ssid_update_path: str = ""
+    tauc_wifi_password_update_path: str = ""
+    tauc_reboot_path: str = ""
+    tauc_diagnostics_path: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore", populate_by_name=True)
 
