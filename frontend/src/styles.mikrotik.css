@@ -6,6 +6,77 @@
   font-size: .74rem;
 }
 
+.mikrotik-fleet {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(125, 211, 252, .12);
+  border-radius: 15px;
+  background: rgba(7, 22, 37, .94);
+}
+
+.mikrotik-fleet .mikrotik-panel-heading p:not(.eyebrow) {
+  margin: .3rem 0 0;
+  color: #71899c;
+  font-size: .72rem;
+}
+
+.mikrotik-fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: .65rem;
+}
+
+.mikrotik-router-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .65rem;
+  min-width: 0;
+  padding: .78rem;
+  border: 1px solid rgba(125, 211, 252, .1);
+  border-radius: 12px;
+  background: rgba(3, 12, 22, .65);
+  color: #91a7b8;
+  text-align: left;
+}
+
+.mikrotik-router-card:hover,
+.mikrotik-router-card.selected {
+  border-color: rgba(56, 189, 248, .38);
+  background: rgba(14, 165, 233, .08);
+}
+
+.mikrotik-router-card.selected {
+  box-shadow: inset 3px 0 #38bdf8;
+}
+
+.mikrotik-router-card strong,
+.mikrotik-router-card small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.mikrotik-router-card strong {
+  color: #dff5ff;
+}
+
+.mikrotik-router-card small {
+  margin-top: .16rem;
+  color: #71899c;
+}
+
+.mikrotik-router-card em {
+  color: #8298aa;
+  font-size: .67rem;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.mikrotik-router-card.online em {
+  color: #86efac;
+}
+
 .router-table input[type="checkbox"] {
   width: 17px;
   height: 17px;
@@ -237,6 +308,7 @@
   .throughput-chart>header{display:block}
   .throughput-chart>header>strong{display:block;margin-top:.45rem}
   .throughput-chart-frame svg{height:240px}
+  .mikrotik-fleet-grid{grid-template-columns:1fr}
 }
 
 @media(max-width:430px){
